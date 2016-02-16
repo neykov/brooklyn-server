@@ -27,7 +27,6 @@ import org.apache.brooklyn.core.entity.factory.ApplicationBuilder;
 import org.apache.brooklyn.core.internal.BrooklynProperties;
 import org.apache.brooklyn.core.mgmt.internal.LocalManagementContext;
 import org.apache.brooklyn.core.mgmt.internal.ManagementContextInternal;
-import org.apache.brooklyn.core.mgmt.rebind.RebindTestUtils;
 import org.apache.brooklyn.core.server.BrooklynServerConfig;
 import org.apache.brooklyn.core.test.entity.LocalManagementContextForTests;
 import org.apache.brooklyn.core.test.entity.TestApplication;
@@ -339,7 +338,7 @@ public class BrooklynLauncherTest {
         }
     }
     
-    @Test  // takes a bit of time because starts webapp, but also tests rest api so useful
+    @Test(groups = "Broken")  // takes a bit of time because starts webapp, but also tests rest api so useful
     public void testErrorsCaughtByApiAndRestApiWorks() throws Exception {
         launcher = newLauncherForTests(true)
                 .catalogInitialization(new CatalogInitialization(null, false, null, false).addPopulationCallback(new Function<CatalogInitialization, Void>() {
