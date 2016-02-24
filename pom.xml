@@ -95,7 +95,7 @@
         <jclouds.version>1.9.2</jclouds.version> <!-- JCLOUDS_VERSION -->
         <logback.version>1.0.7</logback.version>
         <slf4j.version>1.6.6</slf4j.version>  <!-- used for java.util.logging jul-to-slf4j interception -->
-        <guava.version>17.0</guava.version>
+        <guava.version>16.0</guava.version>
         <xstream.version>1.4.7</xstream.version>
         <!-- double-check downstream projects before changing jackson and resteasy versions -->
         <fasterxml.jackson.version>2.4.5</fasterxml.jackson.version>

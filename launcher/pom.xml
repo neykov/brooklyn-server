@@ -238,9 +238,8 @@
                 <artifactId>maven-bundle-plugin</artifactId>
                 <configuration>
                     <instructions>
-                        <Include-Resource>{maven-resources}, target/classes/brooklyn.war</Include-Resource>
-                        <Bundle-Activator>brooklyn.launcher.Activator</Bundle-Activator>
-                        <Main-class>brooklyn.launcher.Main</Main-class>
+                        <Bundle-Activator>org.apache.brooklyn.launcher.Activator</Bundle-Activator>
+                        <Main-class>org.apache.brooklyn.launcher.Main</Main-class>
                     </instructions>
                 </configuration>
             </plugin>

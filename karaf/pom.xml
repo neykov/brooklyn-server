@@ -35,6 +35,8 @@
   <properties>
     <karaf.version>4.0.3</karaf.version>
 
+    <!-- TODO confirm version, use felix instead? -->
+    <org.osgi.core.version>6.0.0</org.osgi.core.version>
     <org.osgi.compendium.version>5.0.0</org.osgi.compendium.version>
     
     <lifecycle-mapping-plugin.version>1.0.0</lifecycle-mapping-plugin.version>
@@ -57,6 +59,7 @@
     <module>apache-brooklyn</module>
     <module>commands</module>
     <module>itest</module>
+    <module>init</module>
   </modules>
   
   <dependencyManagement>

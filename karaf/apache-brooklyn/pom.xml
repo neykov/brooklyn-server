@@ -115,8 +115,11 @@
             <bootFeature>system</bootFeature>
             <bootFeature>wrap</bootFeature>
             <!-- brooklyn features -->
+            <bootFeature>brooklyn-karaf-init</bootFeature>
+            <!-- 
             <bootFeature>brooklyn-jsgui</bootFeature>
             <bootFeature>brooklyn-rest-resources</bootFeature>
+             -->
           </bootFeatures>
         </configuration>
       </plugin>
