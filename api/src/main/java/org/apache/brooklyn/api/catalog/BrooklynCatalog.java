@@ -138,4 +138,6 @@ public interface BrooklynCatalog {
 
     void reset(Collection<CatalogItem<?, ?>> entries);
 
+    /** Finds a specific implementation of this interface. */
+    <T extends BrooklynCatalog> T findCatalog(Class<T> clazz);
 }

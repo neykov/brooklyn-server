@@ -15,7 +15,10 @@
  */
 package org.apache.brooklyn.core.catalog.internal;
 
+import static com.google.common.base.Preconditions.checkNotNull;
 import com.google.common.base.Predicate;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Iterables;
 import java.util.Collection;
 import java.util.List;
 import org.apache.brooklyn.api.catalog.BrooklynCatalog;
@@ -25,39 +28,68 @@ import org.apache.brooklyn.api.internal.AbstractBrooklynObjectSpec;
 /**
  * A catalog that enumerates OSGi services registered as {@link CatalogItem}s.
  *
- * For now we only support read operations over the OSGi service registry. An interesting extension would be to implement mutability using
- * karaf feature install/uninstall services for {@link CatalogItem}s that are applicable.
+ * For now we only support read operations over the OSGi service registry. An
+ * interesting extension would be to implement mutability using karaf feature
+ * install/uninstall services for {@link CatalogItem}s that are applicable.
  *
- * All unsupported operations are delegated to a fallback catalog (chain of responsibility).
+ * All unsupported operations are delegated to a fallback catalog (chain of
+ * responsibility).
  */
 public class OsgiBrookynCatalog implements BrooklynCatalog {
 
     private final BrooklynCatalog successor;
 
-    private List<CatalogItem> catalogItems;
+    private List<CatalogItem<?, ?>> catalogItems;
 
     public OsgiBrookynCatalog(BrooklynCatalog successor) {
         this.successor = successor;
     }
 
-    @Override
-    public CatalogItem<?, ?> getCatalogItem(String symbolicName, String version) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    public synchronized void setOsgiCatalogItems(List<CatalogItem<?, ?>> catalogItems) {
+        this.catalogItems = catalogItems;
     }
 
     @Override
-    public <T, SpecT> CatalogItem<T, SpecT> getCatalogItem(Class<T> type, String symbolicName, String version) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    public synchronized CatalogItem<?, ?> getCatalogItem(String symbolicName, String version) {
+        if (symbolicName == null) {
+            return null;
+        }
+        checkNotNull(version, "version");
+        for (CatalogItem<?, ?> item : catalogItems) {
+            if (symbolicName.equals(item.getSymbolicName())
+                    && version.equals(item.getVersion())) {
+                return item;
+            }
+        }
+        return successor.getCatalogItem(symbolicName, version);
     }
 
     @Override
-    public <T, SpecT> Iterable<CatalogItem<T, SpecT>> getCatalogItems() {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    public synchronized <T, SpecT> CatalogItem<T, SpecT> getCatalogItem(Class<T> type, String symbolicName, String version) {
+        if (symbolicName == null || version == null) {
+            return null;
+        }
+        CatalogItem<?, ?> result = getCatalogItem(symbolicName, version);
+        if (result != null && type == null || type.isAssignableFrom(result.getCatalogItemJavaType())) {
+            return (CatalogItem<T, SpecT>) result;
+        }
+        return successor.getCatalogItem(type, symbolicName, version);
     }
 
     @Override
-    public <T, SpecT> Iterable<CatalogItem<T, SpecT>> getCatalogItems(Predicate<? super CatalogItem<T, SpecT>> filter) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    public synchronized <T, SpecT> Iterable<CatalogItem<T, SpecT>> getCatalogItems() {
+        return ImmutableList.<CatalogItem<T, SpecT>>builder()
+                .addAll((Iterable<CatalogItem<T, SpecT>>) (Iterable) catalogItems)
+                .addAll(successor.<T, SpecT>getCatalogItems())
+                .build();
+    }
+
+    @Override
+    public synchronized <T, SpecT> Iterable<CatalogItem<T, SpecT>> getCatalogItems(Predicate<? super CatalogItem<T, SpecT>> filter) {
+        return ImmutableList.<CatalogItem<T, SpecT>>builder()
+                .addAll(Iterables.filter((Iterable<CatalogItem<T, SpecT>>) (Iterable) catalogItems, filter))
+                .addAll(successor.<T, SpecT>getCatalogItems(filter))
+                .build();
     }
 
     @Override
@@ -97,8 +129,8 @@ public class OsgiBrookynCatalog implements BrooklynCatalog {
 
     @Override
     public Iterable<? extends CatalogItem<?, ?>> addItems(String yaml, boolean forceUpdate) {
-         return successor.addItems(yaml, forceUpdate);
-   }
+        return successor.addItems(yaml, forceUpdate);
+    }
 
     @Override
     public void addItem(CatalogItem<?, ?> item) {
@@ -113,6 +145,15 @@ public class OsgiBrookynCatalog implements BrooklynCatalog {
     @Override
     public void reset(Collection<CatalogItem<?, ?>> entries) {
         successor.reset(entries);
+    }
+
+    @Override
+    public <T extends BrooklynCatalog> T findCatalog(Class<T> clazz) {
+        if (OsgiBrookynCatalog.class.isAssignableFrom(clazz)) {
+            return (T) this;
+        } else {
+            return successor.findCatalog(clazz);
+        }
     }
 
 }

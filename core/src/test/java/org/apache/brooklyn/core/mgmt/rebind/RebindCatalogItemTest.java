@@ -231,7 +231,7 @@ public class RebindCatalogItemTest extends RebindTestFixtureWithApp {
                 "  version: " + TEST_VERSION + "\n" +
                 "services:\n" +
                 "- type: io.camp.mock:AppServer";
-        BasicBrooklynCatalog catalog = (BasicBrooklynCatalog) origManagementContext.getCatalog();
+        BasicBrooklynCatalog catalog = origManagementContext.getCatalog().findCatalog(BasicBrooklynCatalog.class);
         CatalogEntityItemDto item =
                 CatalogItemBuilder.newEntity(symbolicName, TEST_VERSION)
                     .displayName(symbolicName)
@@ -259,7 +259,7 @@ public class RebindCatalogItemTest extends RebindTestFixtureWithApp {
                     .build();
         origManagementContext.getCatalog().addItem(item);
         assertNotNull(item, "catalogItem");
-        BasicBrooklynCatalog catalog = (BasicBrooklynCatalog) origManagementContext.getCatalog();
+        BasicBrooklynCatalog catalog = origManagementContext.getCatalog().findCatalog(BasicBrooklynCatalog.class);
         
         item.setDeprecated(true);
         catalog.persist(item);

@@ -125,7 +125,7 @@ public class CatalogScanTest {
         Class<?> app = c.createSpec((CatalogItem)s1).getType();
         Assert.assertEquals(MySillyAppTemplate.class, app);
         
-        String xml = ((BasicBrooklynCatalog)c).toXmlString();
+        String xml = c.findCatalog(BasicBrooklynCatalog.class).toXmlString();
         log.info("Catalog is:\n"+xml);
         Assert.assertTrue(xml.indexOf("Some silly app test") >= 0);
     }

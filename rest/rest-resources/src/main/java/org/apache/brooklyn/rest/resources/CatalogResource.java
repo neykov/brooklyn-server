@@ -138,7 +138,7 @@ public class CatalogResource extends AbstractBrooklynRestResource implements Cat
                 Entitlements.getEntitlementContext().user());
         }
 
-        ((BasicBrooklynCatalog)mgmt().getCatalog()).reset(CatalogDto.newDtoFromXmlContents(xml, "REST reset"), !ignoreErrors);
+        mgmt().getCatalog().findCatalog(BasicBrooklynCatalog.class).reset(CatalogDto.newDtoFromXmlContents(xml, "REST reset"), !ignoreErrors);
         return Response.ok().build();
     }
     

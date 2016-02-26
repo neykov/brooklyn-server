@@ -180,7 +180,7 @@ public class CatalogInitialization implements ManagementContextInjectable {
                     log.warn("Catalog initialization called to populate initial, even though it has already run the final official initialization");
                 }
                 isPopulating = true;
-                BasicBrooklynCatalog catalog = (BasicBrooklynCatalog) managementContext.getCatalog();
+                BasicBrooklynCatalog catalog = managementContext.getCatalog().findCatalog(BasicBrooklynCatalog.class);
                 if (!catalog.getCatalog().isLoaded()) {
                     catalog.load();
                 } else {

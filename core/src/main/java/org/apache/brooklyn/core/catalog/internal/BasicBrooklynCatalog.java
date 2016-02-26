@@ -81,6 +81,14 @@ public class BasicBrooklynCatalog implements BrooklynCatalog {
 
     private static final Logger log = LoggerFactory.getLogger(BasicBrooklynCatalog.class);
 
+    @Override
+    public <T extends BrooklynCatalog> T findCatalog(Class<T> clazz) {
+        if (BasicBrooklynCatalog.class.isAssignableFrom(clazz))
+            return (T) this;
+        else
+            return null;
+    }
+
     public static class BrooklynLoaderTracker {
         public static final ThreadLocal<BrooklynClassLoadingContext> loader = new ThreadLocal<BrooklynClassLoadingContext>();
         

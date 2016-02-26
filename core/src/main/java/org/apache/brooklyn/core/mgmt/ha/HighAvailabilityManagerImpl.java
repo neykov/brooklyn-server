@@ -928,7 +928,7 @@ public class HighAvailabilityManagerImpl implements HighAvailabilityManager {
             ((LocationManagerInternal)managementContext.getLocationManager()).unmanage(loc, mode);
         }
         
-        ((BasicBrooklynCatalog)managementContext.getCatalog()).reset(CatalogDto.newEmptyInstance("<reset-by-ha-status-change>"));
+        managementContext.getCatalog().findCatalog(BasicBrooklynCatalog.class).reset(CatalogDto.newEmptyInstance("<reset-by-ha-status-change>"));
     }
     
     /** @deprecated since 0.7.0, use {@link #activateHotProxy(ManagementNodeState)} */ @Deprecated

@@ -35,11 +35,28 @@ limitations under the License.
         </cm:default-properties>
     </cm:property-placeholder>
 
-    <bean id="localManagementContextService"
-          class="org.apache.brooklyn.core.mgmt.internal.LocalManagementContext" 
-          destroy-method="terminate" />
+    <reference-list id="osgiCatalogItems"
+                    interface="org.apache.brooklyn.api.catalog.CatalogItem"
+                    availability="optional" />
 
-    <service ref="localManagementContextService">
+    <bean id="basicCatalog"
+          class="org.apache.brooklyn.core.catalog.internal.BasicBrooklynCatalog">
+        <argument ref="localManagementContext" />
+    </bean>
+
+    <bean id="osgiCatalog"
+          class="org.apache.brooklyn.core.catalog.internal.OsgiBrookynCatalog">
+        <argument ref="basicCatalog" />
+        <property name="osgiCatalogItems" ref="osgiCatalogItems" />
+    </bean>
+
+    <bean id="localManagementContext"
+          class="org.apache.brooklyn.core.mgmt.internal.LocalManagementContext" 
+          destroy-method="terminate">
+        <property name="catalog" ref="osgiCatalog" />
+    </bean>
+
+    <service ref="localManagementContext">
         <interfaces>
             <value>org.apache.brooklyn.api.mgmt.ManagementContext</value>
             <value>org.apache.brooklyn.core.mgmt.internal.ManagementContextInternal</value>
@@ -50,7 +67,7 @@ limitations under the License.
           class="org.apache.brooklyn.core.OsgiLauncher"
           init-method="start">
 
-        <property name="managementContext" ref="localManagementContextService" />
+        <property name="managementContext" ref="localManagementContext" />
 
         <property name="ignoreCatalogErrors" value="${ignoreCatalogErrors}" />
         <property name="ignorePersistenceErrors" value="${ignorePersistenceErrors}" />

@@ -51,7 +51,6 @@ import org.apache.brooklyn.api.objs.BrooklynObject;
 import org.apache.brooklyn.api.typereg.BrooklynTypeRegistry;
 import org.apache.brooklyn.api.typereg.RegisteredType;
 import org.apache.brooklyn.config.StringConfigMap;
-import org.apache.brooklyn.core.catalog.internal.BasicBrooklynCatalog;
 import org.apache.brooklyn.core.catalog.internal.CatalogInitialization;
 import org.apache.brooklyn.core.catalog.internal.CatalogUtils;
 import org.apache.brooklyn.core.entity.AbstractEntity;
@@ -86,6 +85,7 @@ import com.google.common.base.Function;
 import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableSet;
+import org.apache.brooklyn.core.catalog.internal.BasicBrooklynCatalog;
 
 public abstract class AbstractManagementContext implements ManagementContextInternal {
     private static final Logger log = LoggerFactory.getLogger(AbstractManagementContext.class);
@@ -153,7 +153,7 @@ public abstract class AbstractManagementContext implements ManagementContextInte
 
     protected DeferredBrooklynProperties configMap;
     protected BasicLocationRegistry locationRegistry;
-    protected final BasicBrooklynCatalog catalog;
+    protected BrooklynCatalog catalog;
     protected final BrooklynTypeRegistry typeRegistry;
     protected ClassLoader baseClassLoader;
     protected Iterable<URL> baseClassPathForScanning;
@@ -178,6 +178,7 @@ public abstract class AbstractManagementContext implements ManagementContextInte
 
     protected Maybe<URI> uri = Maybe.absent();
     protected CatalogInitialization catalogInitialization;
+    private boolean warnedBasicCatalogMissing = false;
 
     public AbstractManagementContext(BrooklynProperties brooklynProperties){
         this(brooklynProperties, null);
@@ -389,11 +390,22 @@ public abstract class AbstractManagementContext implements ManagementContextInte
             // catalog init is needed; normally this will be done from start sequence,
             // but if accessed early -- and in tests -- we will load it here
             getCatalogInitialization().setManagementContext(this);
-            getCatalogInitialization().populateUnofficial(catalog);
+            BasicBrooklynCatalog basicCatalog = catalog.findCatalog(BasicBrooklynCatalog.class);
+            if (basicCatalog != null) {
+                getCatalogInitialization().populateUnofficial(basicCatalog);
+            } else {
+                log.warn("No BasicBrooklynCatalog found in catalog chain; skipping initialization");
+                warnedBasicCatalogMissing = true;
+            }
         }
         return catalog;
     }
-    
+
+    public void setCatalog(BrooklynCatalog catalog) {
+        this.catalog = catalog;
+        warnedBasicCatalogMissing = false;
+    }
+
     @Override
     public BrooklynTypeRegistry getTypeRegistry() {
         return typeRegistry;

@@ -206,8 +206,8 @@ public class CampYamlLiteTest {
             MockWebPlatform.populate(platform2, TestAppAssemblyInstantiator.class);
 
             mgmt2.getCatalog().addItems(yaml);
-            String xml = ((BasicBrooklynCatalog) mgmt2.getCatalog()).toXmlString();
-            ((BasicBrooklynCatalog) mgmt.getCatalog()).reset(CatalogDto.newDtoFromXmlContents(xml, "copy of temporary catalog"));
+            String xml = mgmt2.getCatalog().findCatalog(BasicBrooklynCatalog.class).toXmlString();
+            mgmt.getCatalog().findCatalog(BasicBrooklynCatalog.class).reset(CatalogDto.newDtoFromXmlContents(xml, "copy of temporary catalog"));
         } finally {
             mgmt2.terminate();
         }
