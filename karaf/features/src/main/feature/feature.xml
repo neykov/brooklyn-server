@@ -106,7 +106,7 @@
         <bundle dependency="true">mvn:javax.servlet/javax.servlet-api/${javax-servlet.version}</bundle>
     </feature>
 
-    <feature name="brooklyn-api"  version="${project.version}" description="Brooklyn API">
+    <feature name="brooklyn-api" version="${project.version}" description="Brooklyn API">
         <feature>brooklyn-utils-common</feature>
         <bundle>mvn:org.apache.brooklyn/brooklyn-api/${project.version}</bundle>
     </feature>
@@ -194,7 +194,7 @@
 
     <feature name="brooklyn-commands"  version="${project.version}"  description="Brooklyn Shell Commands">
         <bundle>mvn:org.apache.brooklyn/brooklyn-commands/${project.version}</bundle>
-        <!--<feature version="${project.version}">brooklyn-core</feature>-->
+        <feature>brooklyn-api</feature>
     </feature>
 
     <feature name="brooklyn-software-winrm" version="${project.version}" description="Brooklyn WinRM Software Entities">
