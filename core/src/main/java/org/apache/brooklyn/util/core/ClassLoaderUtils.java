@@ -62,7 +62,7 @@ public class ClassLoaderUtils {
      */
     static final String WHITE_LIST_KEY = "org.apache.brooklyn.classloader.fallback.bundles";
     static final String CLASS_NAME_DELIMITER = ":";
-    private static final String WHITE_LIST_DEFAULT = "org\\.apache\\.brooklyn\\..*:" + OsgiUtils.toOsgiVersion(BrooklynVersion.get());
+    private static final String WHITE_LIST_DEFAULT = "org\\.apache\\.brooklyn\\..*|io\\.cloudsoft\\..*";
 
     // Class.forName gets the class loader from the calling class.
     // We don't have access to the same reflection API so need to pass it explicitly.
