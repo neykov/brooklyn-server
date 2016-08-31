@@ -52,6 +52,10 @@
                     <groupId>org.slf4j</groupId>
                     <artifactId>slf4j-api</artifactId>
                 </exclusion>
+                <exclusion>
+                    <groupId>org.apache.httpcomponents</groupId>
+                    <artifactId>httpcore-nio</artifactId>
+                </exclusion>
             </exclusions>
         </dependency>
         <!--
@@ -63,6 +67,19 @@
             <groupId>org.slf4j</groupId>
             <artifactId>jcl-over-slf4j</artifactId>
             <version>${slf4j.version}</version>
+        </dependency>
+        <dependency>
+<!-- 
+      +-org.apache.cxf:cxf-rt-transports-http-hc:3.1.7
+        +-org.apache.httpcomponents:httpasyncclient:4.1.2
+          +-org.apache.httpcomponents:httpcore-nio:4.4.5
+vs.
+      +-org.apache.cxf:cxf-rt-transports-http-hc:3.1.7
+        +-org.apache.httpcomponents:httpcore-nio:4.4.4
+ -->
+            <groupId>org.apache.httpcomponents</groupId>
+            <artifactId>httpcore-nio</artifactId>
+            <version>${httpcomponents.core.version}</version>
         </dependency>
 
         <!-- test -->
