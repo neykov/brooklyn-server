@@ -18,6 +18,9 @@
  */
 package org.apache.brooklyn.camp.brooklyn.catalog;
 
+import static org.apache.brooklyn.util.osgi.OsgiTestResources.BROOKLYN_TEST_OSGI_ENTITIES_MESSAGE_RESOURCE;
+import static org.apache.commons.io.FileUtils.getFile;
+import static org.apache.commons.io.FileUtils.readFileToString;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
@@ -39,10 +42,13 @@ import org.apache.brooklyn.camp.brooklyn.AbstractYamlTest;
 import org.apache.brooklyn.config.ConfigKey;
 import org.apache.brooklyn.core.catalog.internal.CatalogUtils;
 import org.apache.brooklyn.core.config.ConfigKeys;
+import org.apache.brooklyn.core.entity.BrooklynConfigKeys;
 import org.apache.brooklyn.core.mgmt.osgi.OsgiStandaloneTest;
 import org.apache.brooklyn.core.test.entity.TestEntity;
 import org.apache.brooklyn.core.test.entity.TestEntityImpl;
 import org.apache.brooklyn.core.typereg.RegisteredTypes;
+import org.apache.brooklyn.entity.software.base.SoftwareProcess;
+import org.apache.brooklyn.entity.software.base.VanillaSoftwareProcess;
 import org.apache.brooklyn.entity.stock.BasicApplication;
 import org.apache.brooklyn.entity.stock.BasicEntity;
 import org.apache.brooklyn.test.support.TestResourceUnavailableException;
@@ -50,6 +56,7 @@ import org.apache.brooklyn.util.collections.MutableList;
 import org.apache.brooklyn.util.core.ResourceUtils;
 import org.apache.brooklyn.util.exceptions.Exceptions;
 import org.apache.brooklyn.util.osgi.OsgiTestResources;
+import org.apache.commons.io.FileUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -61,6 +68,8 @@ import com.google.common.collect.Iterables;
 public class CatalogYamlEntityTest extends AbstractYamlTest {
     
     private static final String SIMPLE_ENTITY_TYPE = OsgiTestResources.BROOKLYN_TEST_OSGI_ENTITIES_SIMPLE_ENTITY;
+    private static final String MORE_ENTITIES_POM_PROPERTIES_PATH =
+        "META-INF/maven/org.apache.brooklyn.test.resources.osgi/brooklyn-test-osgi-more-entities/pom.properties";
 
     @Override
     protected boolean disableOsgi() {
@@ -80,7 +89,7 @@ public class CatalogYamlEntityTest extends AbstractYamlTest {
 
         RegisteredType item = mgmt().getTypeRegistry().get(symbolicName, TEST_VERSION);
         String planYaml = RegisteredTypes.getImplementationDataStringForSpec(item);
-        assertTrue(planYaml.indexOf("services:")>=0, "expected 'services:' block: "+item+"\n"+planYaml);
+        assertTrue(planYaml.contains("services:"), "expected 'services:' block: "+item+"\n"+planYaml);
 
         deleteCatalogEntity(symbolicName);
     }
@@ -109,7 +118,7 @@ public class CatalogYamlEntityTest extends AbstractYamlTest {
             "  name: My Catalog App",
             "  description: My description",
             "  icon_url: classpath://path/to/myicon.jpg",
-            "  libraries:",
+            "  brooklyn.libraries:",
             "  - url: " + OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_URL,
             "  item: " + SIMPLE_ENTITY_TYPE);
 
@@ -132,7 +141,7 @@ public class CatalogYamlEntityTest extends AbstractYamlTest {
             "  name: My Catalog App",
             "  description: My description",
             "  icon_url: classpath://path/to/myicon.jpg",
-            "  libraries:",
+            "  brooklyn.libraries:",
             "  - url: " + OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_URL,
             "  item: " + SIMPLE_ENTITY_TYPE);
 
@@ -154,7 +163,7 @@ public class CatalogYamlEntityTest extends AbstractYamlTest {
             "  description: My description",
             "  icon_url: classpath://path/to/myicon.jpg",
             "  version: " + TEST_VERSION,
-            "  libraries:",
+            "  brooklyn.libraries:",
             "  - url: " + OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_URL,
             "",
             "services:",
@@ -176,7 +185,7 @@ public class CatalogYamlEntityTest extends AbstractYamlTest {
             "brooklyn.catalog:",
             "  name: " + id,
             "  itemType: entity",
-            "  libraries:",
+            "  brooklyn.libraries:",
             "  - " + OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_URL,
             "  item:",
             "    type: "+ SIMPLE_ENTITY_TYPE);
@@ -195,7 +204,7 @@ public class CatalogYamlEntityTest extends AbstractYamlTest {
             "brooklyn.catalog:",
             "  name: " + id+":"+TEST_VERSION,
             "  itemType: entity",
-            "  libraries:",
+            "  brooklyn.libraries:",
             "  - " + OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_URL,
             "services:",
             "- type: " + SIMPLE_ENTITY_TYPE);
@@ -241,7 +250,7 @@ public class CatalogYamlEntityTest extends AbstractYamlTest {
 
         RegisteredType referrer = mgmt().getTypeRegistry().get(referrerSymbolicName, TEST_VERSION);
         String planYaml = RegisteredTypes.getImplementationDataStringForSpec(referrer);
-        Assert.assertTrue(planYaml.indexOf("services")>=0, "expected services in: "+planYaml);
+        Assert.assertTrue(planYaml.contains("services"), "expected services in: "+planYaml);
         
         String yaml = "name: simple-app-yaml\n" +
                       "location: localhost\n" +
@@ -390,7 +399,7 @@ public class CatalogYamlEntityTest extends AbstractYamlTest {
             "  id: " + firstItemId,
             "  version: " + TEST_VERSION,
             "  itemType: entity",
-            "  libraries:",
+            "  brooklyn.libraries:",
             "  - url: " + OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_URL,
             "  item:",
             "    type: " + SIMPLE_ENTITY_TYPE);
@@ -401,7 +410,7 @@ public class CatalogYamlEntityTest extends AbstractYamlTest {
             "  id: " + secondItemId,
             "  version: " + TEST_VERSION,
             "  itemType: entity",
-            "  libraries:",
+            "  brooklyn.libraries:",
             "  - name: " + OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_NAME,
             "    version: " + OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_VERSION,
             "  item:",
@@ -420,7 +429,7 @@ public class CatalogYamlEntityTest extends AbstractYamlTest {
                 "  id: my.catalog.app.id.non_existing.ref",
                 "  version: " + TEST_VERSION,
                 "  itemType: entity",
-                "  libraries:",
+                "  brooklyn.libraries:",
                 "  - name: " + nonExistentId,
                 "    version: " + nonExistentVersion,
                 "  item:",
@@ -439,7 +448,7 @@ public class CatalogYamlEntityTest extends AbstractYamlTest {
                 "  id: my.catalog.app.id.non_existing.ref",
                 "  version: " + TEST_VERSION,
                 "  itemType: entity",
-                "  libraries:",
+                "  brooklyn.libraries:",
                 "  - name: io.brooklyn.brooklyn-test-osgi-entities",
                 "  item:",
                 "    type: " + SIMPLE_ENTITY_TYPE);
@@ -453,7 +462,7 @@ public class CatalogYamlEntityTest extends AbstractYamlTest {
                 "  id: my.catalog.app.id.non_existing.ref",
                 "  version: " + TEST_VERSION,
                 "  itemType: entity",
-                "  libraries:",
+                "  brooklyn.libraries:",
                 "  - version: " + OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_VERSION,
                 "  item:",
                 "    type: " + SIMPLE_ENTITY_TYPE);
@@ -473,7 +482,7 @@ public class CatalogYamlEntityTest extends AbstractYamlTest {
             "  id: " + itemId,
             "  version: " + TEST_VERSION,
             "  itemType: entity",
-            "  libraries:",
+            "  brooklyn.libraries:",
             "  - name: " + OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_NAME,
             "    version: " + OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_VERSION,
             "    url: " + OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_URL,
@@ -499,7 +508,7 @@ public class CatalogYamlEntityTest extends AbstractYamlTest {
                 "  id: " + firstItemId,
                 "  version: " + TEST_VERSION,
                 "  itemType: entity",
-                "  libraries:",
+                "  brooklyn.libraries:",
                 "  - name: " + nonExistentId,
                 "    version: " + nonExistentVersion,
                 "    url: " + OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_URL,
@@ -903,7 +912,7 @@ public class CatalogYamlEntityTest extends AbstractYamlTest {
             "  description: My description",
             "  icon_url: classpath://path/to/myicon.jpg",
             "  version: " + TEST_VERSION,
-            "  libraries:",
+            "  brooklyn.libraries:",
             "  - url: " + OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_URL,
             "  item: " + SIMPLE_ENTITY_TYPE);
 
@@ -929,7 +938,7 @@ public class CatalogYamlEntityTest extends AbstractYamlTest {
             "    name: My Catalog App",
             "    description: My description",
             "    icon_url: classpath://path/to/myicon.jpg",
-            "    libraries:",
+            "    brooklyn.libraries:",
             "    - url: " + OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_URL,
             "    item: " + SIMPLE_ENTITY_TYPE,
             "  - id: " + symbolicNameOuter,
@@ -947,11 +956,45 @@ public class CatalogYamlEntityTest extends AbstractYamlTest {
         deleteCatalogEntity(symbolicNameOuter);
     }
 
-    // The test is disabled as it fails. The entity will get assigned the outer-most catalog
-    // item which doesn't have the necessary libraries with visibility to the entity's classpath
-    // When loading resources from inside the entity then we will use the wrong BCLCS. A workaround
-    // has been implemented which explicitly adds the entity's class loader to the fallbacks.
-    @Test(groups="WIP")
+    @Test
+    public void testDeepCatalogItemCanLoadResources() throws Exception {
+        TestResourceUnavailableException.throwIfResourceUnavailable(getClass(), OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_PATH);
+
+        String symbolicNameInner = "my.catalog.app.id.inner";
+        String symbolicNameFiller = "my.catalog.app.id.filler";
+        String symbolicNameOuter = "my.catalog.app.id.outer";
+        addCatalogItems(
+            "brooklyn.catalog:",
+            "  version: " + TEST_VERSION,
+            "  items:",
+            "  - id: " + symbolicNameInner,
+            "    name: My Catalog App",
+            "    brooklyn.libraries:",
+            "    - url: " + OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_URL,
+            "    item: " + SIMPLE_ENTITY_TYPE,
+            "  - id: " + symbolicNameFiller,
+            "    name: Filler App",
+            "    brooklyn.libraries:",
+            "    - url: " + OsgiStandaloneTest.BROOKLYN_TEST_OSGI_MORE_ENTITIES_0_1_0_URL,
+            "    item: " + symbolicNameInner,
+            "  - id: " + symbolicNameOuter,
+            "    item: " + symbolicNameFiller);
+
+        String yaml = "name: " + symbolicNameOuter + "\n" +
+                "services: \n" +
+                "  - serviceType: "+ver(symbolicNameOuter);
+        Entity app = createAndStartApplication(yaml);
+        Entity entity = app.getChildren().iterator().next();
+
+        final String catalogBom = ResourceUtils.create(entity).getResourceAsString("classpath://" + MORE_ENTITIES_POM_PROPERTIES_PATH);
+        assertTrue(catalogBom.contains("artifactId=brooklyn-test-osgi-more-entities"));
+
+        deleteCatalogEntity(symbolicNameOuter);
+        deleteCatalogEntity(symbolicNameFiller);
+        deleteCatalogEntity(symbolicNameInner);
+    }
+
+    @Test
     public void testCatalogItemIdInReferencedItems() throws Exception {
         TestResourceUnavailableException.throwIfResourceUnavailable(getClass(), OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_PATH);
 
@@ -965,7 +1008,7 @@ public class CatalogYamlEntityTest extends AbstractYamlTest {
             "    name: My Catalog App",
             "    description: My description",
             "    icon_url: classpath://path/to/myicon.jpg",
-            "    libraries:",
+            "    brooklyn.libraries:",
             "    - url: " + OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_URL,
             "    item: " + SIMPLE_ENTITY_TYPE,
             "  - id: " + symbolicNameOuter,
@@ -976,10 +1019,12 @@ public class CatalogYamlEntityTest extends AbstractYamlTest {
                 "  - serviceType: "+ver(symbolicNameOuter);
 
         Entity app = createAndStartApplication(yaml);
-        Entity entity = app.getChildren().iterator().next();
 
-        // Fails
-        assertEquals(entity.getCatalogItemId(), ver(symbolicNameInner));
+        Entity entity = app.getChildren().iterator().next();
+        assertEquals(entity.getCatalogItemId(), ver(symbolicNameOuter));
+        assertEquals(entity.getCatalogItemSuperIds().size(), 2);
+        assertEquals(entity.getCatalogItemSuperIds().get(0), ver(symbolicNameOuter));
+        assertEquals(entity.getCatalogItemSuperIds().get(1), ver(symbolicNameInner));
 
         deleteCatalogEntity(symbolicNameInner);
         deleteCatalogEntity(symbolicNameOuter);
@@ -1016,7 +1061,7 @@ public class CatalogYamlEntityTest extends AbstractYamlTest {
             "  name: My Catalog App",
             "  description: My description",
             "  icon_url: classpath://path/to/myicon.jpg",
-            "  libraries:",
+            "  brooklyn.libraries:",
             "  - url: " + OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_URL +
             (extraLib ? "\n"+"  - url: "+OsgiStandaloneTest.BROOKLYN_OSGI_TEST_A_0_1_0_URL : ""),
             "  item:",
@@ -1030,7 +1075,7 @@ public class CatalogYamlEntityTest extends AbstractYamlTest {
             "  description: My description",
             "  icon_url: classpath://path/to/myicon.jpg",
             "  version: " + TEST_VERSION,
-            "  libraries:",
+            "  brooklyn.libraries:",
             "  - url: " + OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_URL,
             "  items:");
         
@@ -1053,7 +1098,7 @@ public class CatalogYamlEntityTest extends AbstractYamlTest {
             "  name: My Catalog App",
             "  description: My description",
             "  icon_url: classpath://path/to/myicon.jpg",
-            "  libraries:",
+            "  brooklyn.libraries:",
             "  - url: " + OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_URL,
             "  item:",
             "    services:",
@@ -1071,7 +1116,7 @@ public class CatalogYamlEntityTest extends AbstractYamlTest {
             "  description: My description",
             "  icon_url: classpath://path/to/myicon.jpg",
             "  version: " + TEST_VERSION,
-            "  libraries:",
+            "  brooklyn.libraries:",
             "  - url: " + OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_URL,
             "  item:",
             "    type: " + BasicEntity.class.getName(),
