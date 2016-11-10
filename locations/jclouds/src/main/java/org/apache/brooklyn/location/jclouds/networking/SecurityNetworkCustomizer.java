@@ -108,11 +108,10 @@ public class SecurityNetworkCustomizer extends BasicJcloudsLocationCustomizer {
     @Override
     public void customize(JcloudsLocation location, ComputeService computeService, JcloudsMachineLocation machine) {
         super.customize(location, computeService, machine);
-        applySecurityGroupCustomizations(location, computeService, machine);
+        applySecurityGroupCustomizations(machine);
     }
 
-    private Collection<SecurityGroup> applySecurityGroupCustomizations(
-        JcloudsLocation location, ComputeService computeService, JcloudsMachineLocation machine) {
+    private Collection<SecurityGroup> applySecurityGroupCustomizations(JcloudsMachineLocation machine) {
 
         if(!enabled) return ImmutableList.of();
 
@@ -130,8 +129,7 @@ public class SecurityNetworkCustomizer extends BasicJcloudsLocationCustomizer {
                     .build();
                 builder.add(defaultRule); // TODO what should go in here really?
 
-                result.addAll(instance.addPermissionsToLocationAndReturnSecurityGroup(
-                    computeService, machine, builder.build()));
+                result.addAll(instance.addPermissionsToLocationAndReturnSecurityGroup(machine, builder.build()));
             }
         }
         return result;
