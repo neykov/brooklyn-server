@@ -64,6 +64,7 @@ public class BasicJcloudsLocationCustomizer extends BasicConfigurableObject impl
     }
 
     public BasicJcloudsLocationCustomizer(final ConfigBag params) {
+        // TODO No! This is BasicConfigurableObject so integrate with it
         this.params = params;
     }
 

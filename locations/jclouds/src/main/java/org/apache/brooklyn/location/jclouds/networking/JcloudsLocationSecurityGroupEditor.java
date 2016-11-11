@@ -18,9 +18,14 @@
  */
 package org.apache.brooklyn.location.jclouds.networking;
 
-import com.google.common.base.Optional;
-import com.google.common.base.Predicate;
-import com.google.common.collect.Iterables;
+import static com.google.common.base.Preconditions.checkNotNull;
+
+import java.util.Arrays;
+import java.util.Set;
+import java.util.concurrent.Callable;
+
+import org.apache.brooklyn.location.jclouds.JcloudsLocation;
+import org.apache.brooklyn.location.jclouds.JcloudsMachineLocation;
 import org.apache.brooklyn.util.exceptions.Exceptions;
 import org.apache.brooklyn.util.guava.Maybe;
 import org.jclouds.aws.AWSResponseException;
@@ -32,11 +37,12 @@ import org.jclouds.net.domain.IpPermission;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Set;
-import java.util.concurrent.Callable;
+import com.google.common.base.Optional;
+import com.google.common.base.Predicate;
+import com.google.common.base.Predicates;
+import com.google.common.collect.Iterables;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
+// TODO Rename to JcloudsSecurityGroupEditor (or even SecurityGroupEditor)
 public class JcloudsLocationSecurityGroupEditor {
 
     private static final Logger LOG = LoggerFactory.getLogger(JcloudsLocationSecurityGroupEditor.class);
@@ -54,12 +60,27 @@ public class JcloudsLocationSecurityGroupEditor {
      * @param predicate A predicate indicating whether the customiser can retry a request to add a security group
      * or a rule after an throwable is thrown.
      */
+    @Deprecated
     public JcloudsLocationSecurityGroupEditor(Location location, ComputeService computeService, Predicate<Exception> predicate) {
         this.location = location;
         this.computeService = computeService;
         this.locationId = this.computeService.getContext().unwrap().getId();
         this.securityApi = this.computeService.getSecurityGroupExtension(); // TODO surely check for isPresent else throw?
         this.isExceptionRetryable = checkNotNull(predicate, "predicate");
+    }
+
+    /**
+     * Location - usually the regionId but could be more specific, i.e. availability zone
+     */
+    public JcloudsLocationSecurityGroupEditor(JcloudsLocation jcloudsLocation, Location templateLocation) {
+        this(templateLocation, jcloudsLocation.getComputeService(), Predicates.<Exception>alwaysFalse());
+    }
+
+    /**
+     * Location - usually the regionId but could be more specific, i.e. availability zone
+     */
+    public JcloudsLocationSecurityGroupEditor(JcloudsMachineLocation jcloudsLocation) {
+        this(jcloudsLocation.getOptionalNode().get().getLocation(), jcloudsLocation.getParent().getComputeService(), Predicates.<Exception>alwaysFalse());
     }
 
     /**
@@ -126,10 +147,29 @@ public class JcloudsLocationSecurityGroupEditor {
     }
 
     public SecurityGroup addPermissions(SecurityGroup group, final Iterable<IpPermission> permissions) {
+        SecurityGroup lastGroup = group;
         for (IpPermission permission : permissions) {
-            group = addPermission(group, permission);
+            lastGroup = addPermission(group, permission);
         }
-        return group;
+        // TODO any of the calls could return null because of duplicate record. Fetch the new SG state ourselves in this case 
+        return lastGroup;
+    }
+
+    // TODO rollback (inside sgEditor)
+    public SecurityGroup addPermissions(final SecurityGroup group, final IpPermission... permissions) {
+        return addPermissions(group, Arrays.asList(permissions));
+    }
+
+    // TODO sync model?
+    public SecurityGroup getOrCreateSecurityGroup(String networkName) {
+//        Optional<SecurityGroup> sg = findSecurityGroupByName(networkName);
+//        if (sg.isPresent()) {
+//            return sg.get();
+//        } else {
+            // TODO Amazon will behave and just return the existing ID if already exists
+            // Probably not the case for other clouds
+            return createSecurityGroup(networkName).get();
+//        }
     }
 
     public SecurityGroup addPermission(final SecurityGroup group, final IpPermission permission) {
@@ -139,18 +179,23 @@ public class JcloudsLocationSecurityGroupEditor {
             public SecurityGroup call() throws Exception {
                 try {
                     return securityApi.get().addIpPermission(permission, group);
-                } catch (AWSResponseException e) {
-                    if ("InvalidPermission.Duplicate".equals(e.getError().getCode())) {
-                        // already exists
-                        LOG.info("Permission already exists for security group; continuing (logging underlying exception at debug): permission="+permission+"; group="+group);
-                        LOG.debug("Permission already exists for security group; continuing: permission="+permission+"; group="+group, e);
-                        return null;
-                    } else {
-                        throw e;
-                    }
                 } catch (Exception e) {
                     Exceptions.propagateIfFatal(e);
-                    if (e.toString().contains("InvalidPermission.Duplicate")) {
+                    // Sometimes AWSResponseException is wrapped in an IllegalStateException
+                    AWSResponseException cause = Exceptions.getFirstThrowableOfType(e, AWSResponseException.class);
+                    if (cause != null) {
+                        if ("InvalidPermission.Duplicate".equals(cause.getError().getCode())) {
+                            // TODO don't log, that's part of the design now
+                            // already exists
+                            LOG.info("Permission already exists for security group; continuing (logging underlying exception at debug): permission="+permission+"; group="+group);
+                            LOG.debug("Permission already exists for security group; continuing: permission="+permission+"; group="+group, e);
+                            return null;
+                        }
+                    }
+
+                    // TODO did something change? the whole catch clause looks wrong (before changes)
+                    // TODO is there existing test coverage for these cases?
+                    if (e.toString().contains("already exists")) {
                         // belt-and-braces, in case already exists
                         LOG.info("Permission already exists for security group; continuing (but unexpected exception type): permission="+permission+"; group="+group, e);
                         return null;
@@ -193,6 +238,7 @@ public class JcloudsLocationSecurityGroupEditor {
             try {
                 return operation.call();
             } catch (Exception e) {
+                Exceptions.propagateIfFatal(e);
                 lastException = e;
                 if (isExceptionRetryable.apply(e)) {
                     LOG.debug("Attempt #{} failed to add security group: {}", retries + 1, e.getMessage());

@@ -38,6 +38,7 @@ public class Cidr implements Serializable {
 
     /** 0.0.0.0/0 -- matches all addresses */
     public static final Cidr UNIVERSAL = new Cidr();
+    public static final Cidr ANYWHERE = UNIVERSAL;
     
     public static final Cidr _10 = new Cidr(10);
     public static final Cidr _172_16 = new Cidr("172.16.0.0/12");
