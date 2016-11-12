@@ -25,28 +25,30 @@ import org.apache.brooklyn.core.location.PortRanges;
 import org.apache.brooklyn.core.sensor.PortAttributeSensorAndConfigKey;
 import org.apache.brooklyn.entity.AbstractEc2LiveTest;
 import org.apache.brooklyn.location.jclouds.networking.SecurityNetworkCustomizer;
+import org.apache.brooklyn.util.core.config.ConfigBag;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+
+// TODO move to brooklyn-locations-jclouds
 public class SecurityNetworkLiveTest extends AbstractEc2LiveTest {
 
     @Override
     protected void doTest(Location loc) throws Exception {
-        SecurityNetworkCustomizer networkInitializer = new SecurityNetworkCustomizer();
-        networkInitializer.config().set(SecurityNetworkCustomizer.NETWORKS, ImmutableList.<String>of(
+        ConfigBag config = ConfigBag.newInstance();
+        config.put(SecurityNetworkCustomizer.NETWORKS, ImmutableList.<String>of(
                 "svet-api-server"));
-        networkInitializer.config().set(SecurityNetworkCustomizer.NETWORKS_INGRESS, ImmutableList.<Map<String, Object>>of(
+        config.put(SecurityNetworkCustomizer.NETWORKS_INGRESS, ImmutableList.<Map<String, Object>>of(
                 ImmutableMap.<String, Object>of(
                         "network", "svet-api-server",
                         "exposing", ImmutableList.of("http.port")),
                 ImmutableMap.<String, Object>of(
                         "network", "svet-external",
                         "exposing", ImmutableList.of("http.port"))));
-        SecuredEmptySoftwareProcess entity = app.createAndManageChild(EntitySpec.create(SecuredEmptySoftwareProcess.class)
-                .configure(SecuredEmptySoftwareProcess.HTTP_PORT, PortRanges.fromInteger(6446))
-                .addInitializer(networkInitializer));
-        entity.sensors().set(SecuredEmptySoftwareProcess.HTTP_PORT, 6446);
+        app.createAndManageChild(EntitySpec.create(SecuredEmptySoftwareProcess.class)
+                .addInitializer(new SecurityNetworkCustomizer(config)));
         app.start(ImmutableList.of(loc));
+        // TODO confirm SG creation - currently manual through AWS console
     }
 
     @Override
@@ -84,7 +86,8 @@ public class SecurityNetworkLiveTest extends AbstractEc2LiveTest {
     
     @ImplementedBy(SecuredEmptySoftwareProcessImpl.class)
     public static interface SecuredEmptySoftwareProcess extends EmptySoftwareProcess {
-        public static final PortAttributeSensorAndConfigKey HTTP_PORT = ConfigKeys.newPortSensorAndConfigKey("http.port", null);
+        public static final PortAttributeSensorAndConfigKey HTTP_PORT = ConfigKeys.newPortSensorAndConfigKey(
+                "http.port", null, PortRanges.fromInteger(6446));
     }
 
     public static class SecuredEmptySoftwareProcessImpl extends EmptySoftwareProcessImpl implements SecuredEmptySoftwareProcess {

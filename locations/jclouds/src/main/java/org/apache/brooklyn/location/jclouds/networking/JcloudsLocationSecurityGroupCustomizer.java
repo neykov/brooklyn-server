@@ -586,7 +586,7 @@ public class JcloudsLocationSecurityGroupCustomizer extends BasicJcloudsLocation
     /**
      * A supplier of CIDRs that loads the external IP address of the localhost machine.
      */
-    private static class LocalhostExternalIpCidrSupplier implements Supplier<Cidr> {
+    static class LocalhostExternalIpCidrSupplier implements Supplier<Cidr> {
 
         private volatile Cidr cidr;
 

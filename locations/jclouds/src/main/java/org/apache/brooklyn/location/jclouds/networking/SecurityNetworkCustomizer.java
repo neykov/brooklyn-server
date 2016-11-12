@@ -22,6 +22,7 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 
+import org.apache.brooklyn.api.location.PortRange;
 import org.apache.brooklyn.api.sensor.AttributeSensor;
 import org.apache.brooklyn.api.sensor.Sensor;
 import org.apache.brooklyn.config.ConfigKey;
@@ -36,6 +37,7 @@ import org.apache.brooklyn.util.collections.MutableSet;
 import org.apache.brooklyn.util.core.config.ConfigBag;
 import org.apache.brooklyn.util.core.flags.TypeCoercions;
 import org.apache.brooklyn.util.core.task.Tasks;
+import org.apache.brooklyn.util.net.Cidr;
 import org.jclouds.compute.ComputeService;
 import org.jclouds.compute.domain.SecurityGroup;
 import org.jclouds.compute.domain.Template;
@@ -43,6 +45,8 @@ import org.jclouds.net.domain.IpPermission;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.base.Supplier;
+import com.google.common.base.Suppliers;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.reflect.TypeToken;
 
@@ -79,12 +83,15 @@ import com.google.common.reflect.TypeToken;
 // TODO support protocols in ingress rules
 // TODO resolve values
 // TODO short-lived cache (seconds) to avoid repeating the same operations for each cluster entity
+// TODO when parameter of type port register port sensor
+// TODO two SGs per entity are created - reduce to a single SG per entity, longer term re-use the same SG between entities if matching
 
 // TODO Rate limiting problems?
-// FAIL security group us-east-1/jclouds#svet-api-server-j0ez01mf62 is not available after creating" - but it's there in the console!
+// FAIL security group us-east-1/jclouds#svet-api-server-j0ez01mf62 is not available after creating" - but it's there in the AWS console!
 // FAIL AWSResponseException: request POST https://ec2.us-east-1.amazonaws.com/ HTTP/1.1 failed with code 400, error: AWSError{requestId='7e206738-6142-44a7-8935-554d831abce8', requestToken='null', code='InvalidParameterValue', message='Value () for parameter groupId is invalid. The value cannot be empty', context='{Response=, Errors=}'}"
 public class SecurityNetworkCustomizer extends BasicJcloudsLocationCustomizer {
     private static final Logger log = LoggerFactory.getLogger(SecurityNetworkCustomizer.class);
+    private static final Supplier<Cidr> LOCALHOST_ADDRESS_SUPPLIER = Suppliers.memoize(new JcloudsLocationSecurityGroupCustomizer.LocalhostExternalIpCidrSupplier());
     
     @SuppressWarnings("serial")
     public static final ConfigKey<Collection<String>> NETWORKS = ConfigKeys.newConfigKey(new TypeToken<Collection<String>>() {},
@@ -94,6 +101,9 @@ public class SecurityNetworkCustomizer extends BasicJcloudsLocationCustomizer {
     public  static final ConfigKey<Collection<? extends Map<String, ?>>> NETWORKS_INGRESS = ConfigKeys.newConfigKey(new TypeToken<Collection<? extends Map<String, ?>>>() {},
             "networks-ingress", "A list of network groups to attach the entity to");
 
+    public static final ConfigKey<Boolean> RESTRICT_MANAGEMENT_CIDR = ConfigKeys.newBooleanConfigKey("restrict.management", null, Boolean.TRUE);
+    public static final ConfigKey<Boolean> ENABLED = ConfigKeys.newBooleanConfigKey("enabled", null, Boolean.TRUE);
+
     /**
      * Add a flag that disables this customizer.  It's isn't currently possible to add a customizer
      * based on a flag.  This flag makes it possible to write blueprints using the customizer but still
@@ -102,11 +112,14 @@ public class SecurityNetworkCustomizer extends BasicJcloudsLocationCustomizer {
      * Default: true
      */
     private boolean enabled = true;
+    private boolean restrictManagement;
 
     // Needed for initializer
     // TODO document and even remove this requirement, why not same as entities?
     public SecurityNetworkCustomizer(ConfigBag config) {
         super(config);
+        enabled = config.get(ENABLED);
+        restrictManagement = config.get(RESTRICT_MANAGEMENT_CIDR);
     }
 
     // To be used for customizer behaviour
@@ -130,6 +143,7 @@ public class SecurityNetworkCustomizer extends BasicJcloudsLocationCustomizer {
         try {
             addSecurityGroups(location, template);
         } finally {
+            // TODO need to stack them - this will clear state set by callers
             Tasks.resetBlockingDetails();
         }
     }
@@ -166,6 +180,12 @@ public class SecurityNetworkCustomizer extends BasicJcloudsLocationCustomizer {
                     for (Object port : ports) {
                         // TODO DSL support (deferred values)
                         Integer portValue = getSensorValue(entity, port);
+                        if (portValue == null) {
+                            portValue = getConfigValue(entity, port);
+                        }
+                        if (portValue == null) {
+                            portValue = getCoercedValue(port);
+                        }
                         if (portValue != null) {
                             // TODO local cache for the groups
                             Collection<IpPermission> rule = sgRules.allFromOnPort(sgEditor.getOrCreateSecurityGroup(getAppNetworkName(name, entity)), portValue);
@@ -182,6 +202,25 @@ public class SecurityNetworkCustomizer extends BasicJcloudsLocationCustomizer {
         template.getOptions().securityGroups(ImmutableSet.<String>builder().addAll(existingSg).addAll(newGroupNames).build());
     }
 
+    private Integer getConfigValue(EntityInternal entity, Object port) {
+        String portStr = port.toString();
+        ConfigKey<?> portConfig = entity.getEntityType().getConfigKey(portStr);
+        if (portConfig == null) {
+            portConfig = ConfigKeys.newConfigKey(PortRange.class, portStr);
+        }
+        Object portValue = entity.config().get(portConfig);
+        PortRange portRange = TypeCoercions.tryCoerce(portValue, PortRange.class).orNull();
+        if (portRange != null) {
+            return portRange.iterator().next();
+        } else {
+            return null;
+        }
+    }
+
+    private Integer getCoercedValue(Object port) {
+        return TypeCoercions.tryCoerce(port, Integer.class).orNull();
+    }
+
     protected Integer getSensorValue(EntityInternal entity, Object port) {
         String portStr = port.toString();
         Sensor<?> portSensor = entity.getEntityType().getSensor(portStr);
@@ -192,12 +231,7 @@ public class SecurityNetworkCustomizer extends BasicJcloudsLocationCustomizer {
             AttributeSensor<Integer> castedSensor = (AttributeSensor<Integer>) portSensor;
             attrSensor = castedSensor;
         } else {
-            Integer portNumeric = TypeCoercions.coerce(port, Integer.class);
-            if (portNumeric != null) {
-                return portNumeric;
-            } else {
-                attrSensor = Sensors.newIntegerSensor(portStr);
-            }
+            attrSensor = Sensors.newIntegerSensor(portStr);
         }
         return entity.sensors().get(attrSensor);
     }
@@ -207,14 +241,21 @@ public class SecurityNetworkCustomizer extends BasicJcloudsLocationCustomizer {
     }
 
     protected Collection<IpPermission> getNetworkRule(SecurityGroupRules sgRules, String networkName, SecurityGroup sg) {
-        Collection<IpPermission> rule;
-        if (networkName.equalsIgnoreCase("public") || networkName.equalsIgnoreCase("management")) {
-            // TODO restrict to inbountPorts only and Brooklyn source IP for management
-            rule = sgRules.everything();
+        if (networkName.equalsIgnoreCase("public")) {
+            // TODO restrict to inbountPorts (then will be per-entity SG)
+            return sgRules.everything();
+        } else if (networkName.equalsIgnoreCase("management")) {
+            // TODO Restrict to HA Brooklyn source IP for management, management can be cloud-global (not per app)
+            //      or per-entity if inbountPorts are added (but then will be slow to update Brooklyn IPs in all entities)
+            // TODO Need to figure out whether to use public IP or local (if Brooklyn is on the same subnet, or could be on another subnet)
+            if (restrictManagement) {
+                return sgRules.allFrom(LOCALHOST_ADDRESS_SUPPLIER.get());
+            } else {
+                return sgRules.everything();
+            }
         } else {
-            rule = sgRules.allFrom(sg);
+            return sgRules.allFrom(sg);
         }
-        return rule;
     }
     
     protected final static EntityInternal getContextEntity() {
