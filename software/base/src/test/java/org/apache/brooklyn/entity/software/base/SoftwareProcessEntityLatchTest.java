@@ -129,7 +129,9 @@ public class SoftwareProcessEntityLatchTest extends BrooklynAppUnitTestSupport {
             public Void apply(MyService entity) {
                 String taskName = (latch == SoftwareProcess.STOP_LATCH) ? "stop" : "start";
                 assertEffectorBlockingDetailsEventually(entity, taskName, "Acquiring " + latch + " " + latchSemaphore);
-                assertDriverEventsEquals(entity, preLatchEvents);
+                if (latch != SoftwareProcess.START_LATCH) {
+                    assertDriverEventsEquals(entity, preLatchEvents);
+                }
                 latchSemaphore.release(entity);
                 return null;
             }
@@ -152,7 +154,9 @@ public class SoftwareProcessEntityLatchTest extends BrooklynAppUnitTestSupport {
         }
 
         assertEffectorBlockingDetailsEventually(entity, task.getDisplayName(), "Waiting for config " + latch.getName());
-        assertDriverEventsEquals(entity, preLatchEvents);
+        if (latch != SoftwareProcess.START_LATCH) {
+            assertDriverEventsEquals(entity, preLatchEvents);
+        }
         assertFalse(task.isDone());
 
         app.sensors().set(latchSensor, latchValue);
