@@ -28,6 +28,7 @@ import org.apache.brooklyn.config.ConfigKey;
 import org.apache.brooklyn.core.entity.Entities;
 import org.apache.brooklyn.core.entity.EntityAdjuncts;
 import org.apache.brooklyn.core.entity.EntityInternal;
+import org.apache.brooklyn.core.sensor.Sensors;
 import org.apache.brooklyn.core.test.entity.TestEntity;
 import org.apache.brooklyn.core.test.policy.TestEnricher;
 import org.apache.brooklyn.enricher.stock.Propagator;
@@ -63,6 +64,7 @@ public class EnrichersYamlTest extends AbstractYamlTest {
         Assert.assertEquals(enricher.getConfig(TestEnricher.CONF_FROM_FUNCTION), "$brooklyn: is a fun place");
         
         Entity target = ((EntityInternal)app).getExecutionContext().submit(MutableMap.of(), new Callable<Entity>() {
+            @Override
             public Entity call() {
                 return enricher.getConfig(TestEnricher.TARGET_ENTITY);
             }}).get();
@@ -70,6 +72,7 @@ public class EnrichersYamlTest extends AbstractYamlTest {
         Assert.assertEquals(target.getDisplayName(), "testentity");
         Assert.assertEquals(target, app.getChildren().iterator().next());
         Entity targetFromFlag = ((EntityInternal)app).getExecutionContext().submit(MutableMap.of(), new Callable<Entity>() {
+            @Override
             public Entity call() {
                 return enricher.getConfig(TestEnricher.TARGET_ENTITY_FROM_FLAG);
             }}).get();
@@ -106,6 +109,35 @@ public class EnrichersYamlTest extends AbstractYamlTest {
         
         Assert.assertEquals(((TestEnricher) enricher).getLeftoverProperties(),
                 ImmutableMap.of("enricherLiteralValue1", "Hello", "enricherLiteralValue2", "World"));
+    }
+    
+    @Test
+    public void testWithEntityEnricherAndParameters() throws Exception {
+        Entity app = createAndStartApplication(loadYaml("test-entity-basic-template.yaml",
+                    "  id: parentId",
+                    "  brooklyn.parameters:",
+                    "    - name: test.fqdn",
+                    "      type: string",
+                    "      default: \"www.example.org\"",
+                    "  brooklyn.enrichers:",
+                    "    - enricherType: org.apache.brooklyn.enricher.stock.Transformer",
+                    "      brooklyn.config:",
+                    "        enricher.triggerSensors:",
+                    "          - $brooklyn:sensor(\"test.sequence\")",
+                    "        enricher.targetSensor: $brooklyn:sensor(\"main.uri\")",
+                    "        enricher.targetValue:",
+                    "          $brooklyn:formatString:",
+                    "            - \"http://%s:%d/\"",
+                    "            - $brooklyn:config(\"test.fqdn\")",
+                    "            - $brooklyn:attributeWhenReady(\"test.sequence\")"));
+        waitForApplicationTasks(app);
+        
+        log.info("App started:");
+        final Entity parentEntity = app.getChildren().iterator().next();
+        Entities.dumpInfo(app);
+        Assert.assertTrue(parentEntity instanceof TestEntity, "Expected parent entity to be TestEntity, found:" + parentEntity);
+        parentEntity.sensors().set(TestEntity.SEQUENCE, 1234);
+        Asserts.eventually(Entities.attributeSupplier(parentEntity, Sensors.newStringSensor("main.uri")), Predicates.<String>equalTo("http://www.example.org:1234/"));
     }
     
     @Test
@@ -157,6 +189,7 @@ public class EnrichersYamlTest extends AbstractYamlTest {
         Asserts.assertTrue(enricher instanceof Propagator, "Expected enricher to be Propagator, found:" + enricher);
         final Propagator propagator = (Propagator)enricher;
         Entity producer = ((EntityInternal)parentEntity).getExecutionContext().submit(MutableMap.of(), new Callable<Entity>() {
+            @Override
             public Entity call() {
                 return propagator.getConfig(Propagator.PRODUCER);
             }}).get();
@@ -233,7 +266,7 @@ public class EnrichersYamlTest extends AbstractYamlTest {
             Entity fromConfig = ((EntityInternal)entity).getExecutionContext().submit(MutableMap.of(), new Callable<Entity>() {
                 @Override
                 public Entity call() throws Exception {
-                    return (Entity) enricher.getConfig(key);
+                    return enricher.getConfig(key);
                 }
             }).get();
             Assert.assertEquals(fromConfig, keyToEntity.get(key));

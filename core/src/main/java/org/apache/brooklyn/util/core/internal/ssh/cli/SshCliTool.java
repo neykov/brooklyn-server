@@ -81,6 +81,7 @@ public class SshCliTool extends SshAbstractTool implements SshTool {
         public B scpExecutable(String val) {
             this.scpExecutable = val; return self();
         }
+        @Override
         @SuppressWarnings("unchecked")
         public T build() {
             return (T) new SshCliTool(this);
@@ -186,6 +187,7 @@ public class SshCliTool extends SshAbstractTool implements SshTool {
     @Override
     public int execScript(final Map<String,?> props, final List<String> commands, final Map<String,?> env) {
         return new ToolAbstractExecScript(props) {
+            @Override
             public int run() {
                 String scriptContents = toScript(props, commands, env);
                 if (LOG.isTraceEnabled()) LOG.trace("Running shell command at {} as script: {}", host, scriptContents);
@@ -224,6 +226,7 @@ public class SshCliTool extends SshAbstractTool implements SshTool {
         try {
             List<String> cmd = Lists.newArrayList();
             cmd.add(getOptionalVal(props, PROP_SCP_EXECUTABLE, scpExecutable));
+            cmd.add("-B");
             if (privateKeyFile != null) {
                 cmd.add("-i");
                 cmd.add(privateKeyFile.getAbsolutePath());
@@ -260,6 +263,8 @@ public class SshCliTool extends SshAbstractTool implements SshTool {
             List<String> cmd = Lists.newArrayList();
             cmd.add(getOptionalVal(props, PROP_SSH_EXECUTABLE, sshExecutable));
             String propsFlags = getOptionalVal(props, PROP_SSH_FLAGS, sshFlags);
+            cmd.add("-o");
+            cmd.add("BatchMode=yes");
             if (propsFlags!=null && propsFlags.trim().length()>0)
                 cmd.addAll(Arrays.asList(propsFlags.trim().split(" ")));
             if (privateKeyFile != null) {

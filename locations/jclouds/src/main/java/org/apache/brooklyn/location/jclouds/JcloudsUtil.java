@@ -38,7 +38,8 @@ import java.util.concurrent.TimeoutException;
 import javax.annotation.Nullable;
 
 import org.apache.brooklyn.core.config.Sanitizer;
-import org.apache.brooklyn.util.collections.MutableList;
+import org.apache.brooklyn.core.location.LocationConfigKeys;
+import org.apache.brooklyn.core.location.cloud.CloudLocationConfig;
 import org.apache.brooklyn.util.core.config.ConfigBag;
 import org.apache.brooklyn.util.exceptions.Exceptions;
 import org.apache.brooklyn.util.net.Networking;
@@ -268,28 +269,19 @@ public class JcloudsUtil implements JcloudsLocationConfig {
      *  <p>
      *  (Marked Beta as that argument will likely be removed.)
      *
-     *  @since 0.7.0 */
+     *  @since 0.7.0
+     *  @deprecated since 0.11.0; instead use BlobStoreContextFactoryImpl.INSTANCE
+     */
     @Beta
+    @Deprecated
     public static BlobStoreContext newBlobstoreContext(String provider, @Nullable String endpoint, String identity, String credential) {
-        Properties overrides = new Properties();
-        // * Java 7,8 bug workaround - sockets closed by GC break the internal bookkeeping
-        //   of HttpUrlConnection, leading to invalid handling of the "HTTP/1.1 100 Continue"
-        //   response. Coupled with a bug when using SSL sockets reads will block
-        //   indefinitely even though a read timeout is explicitly set.
-        // * Java 6 ignores the header anyways as it is included in its restricted headers black list.
-        // * Also there's a bug in SL object store which still expects Content-Length bytes
-        //   even when it responds with a 408 timeout response, leading to incorrectly
-        //   interpreting the next request (triggered by above problem).
-        overrides.setProperty(Constants.PROPERTY_STRIP_EXPECT_HEADER, "true");
+        ConfigBag conf = ConfigBag.newInstance();
+        conf.put(LocationConfigKeys.CLOUD_PROVIDER, provider);
+        conf.put(LocationConfigKeys.ACCESS_IDENTITY, identity);
+        conf.put(LocationConfigKeys.ACCESS_CREDENTIAL, credential);
+        conf.put(CloudLocationConfig.CLOUD_ENDPOINT, endpoint);
 
-        ContextBuilder contextBuilder = ContextBuilder.newBuilder(provider).credentials(identity, credential);
-        contextBuilder.modules(MutableList.copyOf(JcloudsUtil.getCommonModules()));
-        if (!org.apache.brooklyn.util.text.Strings.isBlank(endpoint)) {
-            contextBuilder.endpoint(endpoint);
-        }
-        contextBuilder.overrides(overrides);
-        BlobStoreContext context = contextBuilder.buildView(BlobStoreContext.class);
-        return context;
+        return BlobStoreContextFactoryImpl.INSTANCE.newBlobStoreContext(conf);
     }
 
     /**
@@ -329,6 +321,7 @@ public class JcloudsUtil implements JcloudsLocationConfig {
     /**
      * @deprecated since 0.9.0; use {@link #getFirstReachableAddress(NodeMetadata, Duration)}
      */
+    @Deprecated
     public static String getFirstReachableAddress(ComputeServiceContext context, NodeMetadata node) {
         // Previously this called jclouds `sshForNode().apply(Node)` to check all IPs of node (private+public),
         // to find one that is reachable. It does `openSocketFinder.findOpenSocketOnNode(node, node.getLoginPort(), ...)`.

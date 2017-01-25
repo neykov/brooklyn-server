@@ -39,6 +39,7 @@ import org.apache.brooklyn.api.catalog.CatalogItem.CatalogItemType;
 import org.apache.brooklyn.api.entity.Application;
 import org.apache.brooklyn.api.entity.Entity;
 import org.apache.brooklyn.api.entity.EntitySpec;
+import org.apache.brooklyn.api.internal.AbstractBrooklynObjectSpec;
 import org.apache.brooklyn.api.mgmt.ManagementContext;
 import org.apache.brooklyn.api.mgmt.Task;
 import org.apache.brooklyn.api.mgmt.ha.HighAvailabilityMode;
@@ -641,8 +642,7 @@ public class Main extends AbstractMain {
                         // and additionally they might contain multiple items in which case
                         // the validation below won't work anyway (you need to go via a deployment plan)
                     } else {
-                        @SuppressWarnings({ "unchecked", "rawtypes" })
-                        Object spec = catalog.createSpec((CatalogItem)item);
+                        AbstractBrooklynObjectSpec<?, ?> spec = catalog.peekSpec(item);
                         if (spec instanceof EntitySpec) {
                             BrooklynTypes.getDefinedEntityType(((EntitySpec<?>)spec).getType());
                         }
@@ -753,7 +753,7 @@ public class Main extends AbstractMain {
             // Instantiate an app builder (wrapping app class in ApplicationBuilder, if necessary)
             if (ApplicationBuilder.class.isAssignableFrom(clazz)) {
                 Constructor<?> constructor = clazz.getConstructor();
-                return (ApplicationBuilder) constructor.newInstance();
+                return constructor.newInstance();
             } else if (StartableApplication.class.isAssignableFrom(clazz)) {
                 EntitySpec<? extends StartableApplication> appSpec;
                 if (tempclazz.isInterface())
@@ -768,7 +768,7 @@ public class Main extends AbstractMain {
                 // TODO grr; what to do about non-startable applications?
                 // without this we could return ApplicationBuilder rather than Object
                 Constructor<?> constructor = clazz.getConstructor();
-                return (AbstractApplication) constructor.newInstance();
+                return constructor.newInstance();
             } else if (AbstractEntity.class.isAssignableFrom(clazz)) {
                 // TODO Should we really accept any entity type, and just wrap it in an app? That's not documented!
                 return new ApplicationBuilder() {

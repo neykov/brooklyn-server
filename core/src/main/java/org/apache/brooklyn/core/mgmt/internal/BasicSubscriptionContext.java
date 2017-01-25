@@ -39,6 +39,7 @@ import org.slf4j.LoggerFactory;
 import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 
 import groovy.lang.Closure;
@@ -55,7 +56,7 @@ public class BasicSubscriptionContext implements SubscriptionContext {
     private final Map<String,Object> flags;
 
     public BasicSubscriptionContext(SubscriptionManager manager, Object subscriber) {
-        this(Collections.<String,Object>emptyMap(), manager, subscriber);
+        this(ImmutableMap.<String, Object>of(), manager, subscriber);
     }
     
     public BasicSubscriptionContext(Map<String, ?> flags, SubscriptionManager manager, Object subscriber) {
@@ -165,7 +166,7 @@ public class BasicSubscriptionContext implements SubscriptionContext {
         for (SubscriptionHandle s : subscriptionsCopy) {
             count++; 
             boolean result = unsubscribe(s); 
-            if (!result) LOG.warn("When unsubscribing from all of {}, unsubscribe of {} return false", subscriber, s);
+            if (!result) LOG.warn("When unsubscribing from all of {}, unsubscribe of {} returned false", subscriber, s);
         }
         return count;
     }

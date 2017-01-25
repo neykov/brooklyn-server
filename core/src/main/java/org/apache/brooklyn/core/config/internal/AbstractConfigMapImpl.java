@@ -103,10 +103,12 @@ public abstract class AbstractConfigMapImpl<TContainer extends BrooklynObject> i
         return (BrooklynObjectInternal)bo;
     }
     
+    @Override
     public <T> T getConfig(ConfigKey<T> key) {
         return getConfigImpl(key, false).getWithoutError().get();
     }
     
+    @Override
     public <T> T getConfig(HasConfigKey<T> key) {
         return getConfigImpl(key.getConfigKey(), false).getWithoutError().get();
     }
@@ -163,13 +165,18 @@ public abstract class AbstractConfigMapImpl<TContainer extends BrooklynObject> i
         return putAllOwnConfigIntoSafely(ConfigBag.newInstance()).seal();
     }
 
-    public Object setConfig(ConfigKey<?> key, Object v) {
-        Object val = coerceConfigVal(key, v);
+    public Object setConfig(final ConfigKey<?> key, Object v) {
+        // Use our own key for writing, (e.g. in-case it should (or should not) be a structured key like MapConfigKey).
+        // This is same logic as for getConfig, except we only have to look at our own container.
+        ConfigKey<?> ownKey = getKeyAtContainer(getContainer(), key);
+        if (ownKey==null) ownKey = key;
+
+        Object val = coerceConfigVal(ownKey, v);
         Object oldVal;
-        if (key instanceof StructuredConfigKey) {
-            oldVal = ((StructuredConfigKey)key).applyValueToMap(val, ownConfig);
+        if (ownKey instanceof StructuredConfigKey) {
+            oldVal = ((StructuredConfigKey)ownKey).applyValueToMap(val, ownConfig);
         } else {
-            oldVal = ownConfig.put(key, val);
+            oldVal = ownConfig.put(ownKey, val);
         }
         postSetConfig();
         return oldVal;
@@ -321,7 +328,7 @@ public abstract class AbstractConfigMapImpl<TContainer extends BrooklynObject> i
     @SuppressWarnings("unchecked")
     protected <T> T coerce(Object value, Class<T> type) {
         if (type==null || value==null) return (T) value;
-        return (T) TypeCoercions.coerce(value, type);
+        return TypeCoercions.coerce(value, type);
     }
     
     protected <T> ReferenceWithError<ConfigValueAtContainer<TContainer,T>> getConfigImpl(final ConfigKey<T> queryKey, final boolean raw) {
@@ -332,8 +339,9 @@ public abstract class AbstractConfigMapImpl<TContainer extends BrooklynObject> i
                 return getKeyAtContainer(input, queryKey);
             }
         };
-        ConfigKey<T> ownKey = keyFn.apply(getContainer());
-        if (ownKey==null) ownKey = queryKey;
+        ConfigKey<T> ownKey1 = keyFn.apply(getContainer());
+        if (ownKey1==null) ownKey1 = queryKey;
+        final ConfigKey<T> ownKey = ownKey1;
         @SuppressWarnings("unchecked")
         final Class<T> type = (Class<T>) ownKey.getType();
         
@@ -356,8 +364,9 @@ public abstract class AbstractConfigMapImpl<TContainer extends BrooklynObject> i
             
             Function<TContainer, Maybe<Object>> lookupFn = new Function<TContainer, Maybe<Object>>() {
                 @Override public Maybe<Object> apply(TContainer input) {
-                    Maybe<Object> result = getRawValueAtContainer(input, queryKey);
-                    if (!raw) result = resolveRawValueFromContainer(input, queryKey, result);
+                    // lookup against ownKey as it may do extra resolution (eg grab *.* subkeys if a map)
+                    Maybe<Object> result = getRawValueAtContainer(input, ownKey);
+                    if (!raw) result = resolveRawValueFromContainer(input, ownKey, result);
                     return result;
                 }
             };

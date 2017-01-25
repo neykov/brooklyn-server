@@ -21,6 +21,7 @@ package org.apache.brooklyn.core.sensor.ssh;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
+import org.apache.brooklyn.api.entity.Entity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -77,7 +78,7 @@ public final class SshCommandSensor<T> extends AddSensor<T> {
         super(params);
 
         // TODO create a supplier for the command string to support attribute embedding
-        command = Preconditions.checkNotNull(params.get(SENSOR_COMMAND), "SSH command must be dupplied when defining this sensor");
+        command = Preconditions.checkNotNull(params.get(SENSOR_COMMAND), "SSH command must be supplied when defining this sensor");
         executionDir = params.get(SENSOR_EXECUTION_DIR);
         sensorEnv = params.get(SENSOR_SHELL_ENVIRONMENT);
     }
@@ -130,15 +131,17 @@ public final class SshCommandSensor<T> extends AddSensor<T> {
                             return TypeCoercions.coerce(Strings.trimEnd(input), (Class<T>) sensor.getType());
                         }}, SshValueFunctions.stdout()));
 
-        SshFeed.builder()
+        SshFeed feed = SshFeed.builder()
                 .entity(entity)
                 .onlyIfServiceUp()
                 .poll(pollConfig)
                 .build();
+
+        entity.addFeed(feed);
     }
 
     @Beta
-    public static String makeCommandExecutingInDirectory(String command, String executionDir, EntityLocal entity) {
+    public static String makeCommandExecutingInDirectory(String command, String executionDir, Entity entity) {
         String finalCommand = command;
         String execDir = executionDir;
         if (Strings.isBlank(execDir)) {

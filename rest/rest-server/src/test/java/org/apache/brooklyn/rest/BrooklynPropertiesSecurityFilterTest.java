@@ -35,7 +35,6 @@ import org.eclipse.jetty.server.Server;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.annotations.Test;
-import org.apache.brooklyn.rest.security.provider.AnyoneSecurityProvider;
 import org.apache.brooklyn.util.collections.MutableMap;
 import org.apache.brooklyn.util.http.HttpTool;
 import org.apache.brooklyn.util.http.HttpToolResponse;
@@ -97,8 +96,7 @@ public class BrooklynPropertiesSecurityFilterTest extends BrooklynRestApiLaunche
     public void testInteractionOfSecurityFilterAndFormMapProvider() throws Exception {
         Stopwatch stopwatch = Stopwatch.createStarted();
         try {
-            Server server = useServerForTest(BrooklynRestApiLauncher.launcher()
-                    .securityProvider(AnyoneSecurityProvider.class)
+            Server server = useServerForTest(baseLauncher()
                     .forceUseOfDefaultCatalogWithJavaClassPath(true)
                     .withoutJsgui()
                     .start());

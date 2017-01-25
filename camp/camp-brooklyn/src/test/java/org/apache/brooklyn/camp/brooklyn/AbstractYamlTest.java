@@ -40,6 +40,7 @@ import org.apache.brooklyn.core.test.entity.LocalManagementContextForTests.Build
 import org.apache.brooklyn.core.typereg.RegisteredTypeLoadingContexts;
 import org.apache.brooklyn.util.collections.MutableMap;
 import org.apache.brooklyn.util.core.ResourceUtils;
+import org.apache.brooklyn.util.net.Urls;
 import org.apache.brooklyn.util.stream.Streams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,6 +69,11 @@ public abstract class AbstractYamlTest {
     @BeforeMethod(alwaysRun = true)
     public void setUp() throws Exception {
         forceUpdate = false;
+        brooklynMgmt = setUpPlatform();
+        catalog = brooklynMgmt.getCatalog();
+    }
+
+    protected ManagementContext setUpPlatform() {
         launcher = new BrooklynCampPlatformLauncherNoServer() {
             @Override
             protected LocalManagementContext newMgmtContext() {
@@ -75,11 +81,10 @@ public abstract class AbstractYamlTest {
             }
         };
         launcher.launch();
-        brooklynMgmt = launcher.getBrooklynMgmt();
-        catalog = brooklynMgmt.getCatalog();
         platform = launcher.getCampPlatform();
+        return launcher.getBrooklynMgmt();
     }
-
+    
     protected LocalManagementContext newTestManagementContext() {
         Builder builder = LocalManagementContextForTests.builder(true).disableOsgi(disableOsgi());
         if (useDefaultProperties()) {
@@ -100,6 +105,10 @@ public abstract class AbstractYamlTest {
     @AfterMethod(alwaysRun = true)
     public void tearDown() throws Exception {
         if (brooklynMgmt != null) Entities.destroyAll(brooklynMgmt);
+        tearDownPlatform();
+    }
+
+    protected void tearDownPlatform() throws Exception {
         if (launcher != null) launcher.stopServers();
     }
 
@@ -112,7 +121,14 @@ public abstract class AbstractYamlTest {
     }
 
     protected String loadYaml(String yamlFileName, String ...extraLines) throws Exception {
-        String input = new ResourceUtils(this).getResourceAsString(yamlFileName).trim();
+        ResourceUtils ru = new ResourceUtils(this);
+        if (!ru.doesUrlExist(yamlFileName)) {
+            if (ru.doesUrlExist(Urls.mergePaths(getClass().getPackage().getName().replace('.', '/'), yamlFileName))) {
+                // look in package-specific folder if not found at root
+                yamlFileName = Urls.mergePaths(getClass().getPackage().getName().replace('.', '/'), yamlFileName);
+            }
+        }
+        String input = ru.getResourceAsString(yamlFileName).trim();
         StringBuilder builder = new StringBuilder(input);
         for (String l: extraLines)
             builder.append("\n").append(l);
@@ -124,6 +140,7 @@ public abstract class AbstractYamlTest {
     }
     
     /** @deprecated since 0.10.0, use {@link #createAndStartApplication(String)} instead */
+    @Deprecated
     protected Entity createAndStartApplication(Reader input) throws Exception {
         return createAndStartApplication(Streams.readFully(input));
     }
@@ -140,12 +157,34 @@ public abstract class AbstractYamlTest {
         return app;
     }
 
+    protected Entity createAndStartApplicationAsync(String... multiLineYaml) throws Exception {
+        return createAndStartApplicationAsync(joinLines(multiLineYaml));
+    }
+
+    protected Entity createAndStartApplicationAsync(String yaml) throws Exception {
+        return createAndStartApplicationAsync(yaml, MutableMap.<String,String>of());
+    }
+    
+    protected Entity createAndStartApplicationAsync(String yaml, Map<String,?> startParameters) throws Exception {
+        EntitySpec<?> spec = 
+            mgmt().getTypeRegistry().createSpecFromPlan(CampTypePlanTransformer.FORMAT, yaml, RegisteredTypeLoadingContexts.spec(Application.class), EntitySpec.class);
+        final Entity app = brooklynMgmt.getEntityManager().createEntity(spec);
+        // start the app (happens automatically if we use camp to instantiate, but not if we use create spec approach).
+        // Note calling .get() on task, so this is non-blocking.
+        app.invoke(Startable.START, startParameters);
+        return app;
+    }
+
     /** @deprecated since 0.10.0, use {@link #createStartWaitAndLogApplication(String)} instead */
     @Deprecated
     protected Entity createStartWaitAndLogApplication(Reader input) throws Exception {
         return createStartWaitAndLogApplication(Streams.readFully(input));
     }
 
+    protected Entity createStartWaitAndLogApplication(String... input) throws Exception {
+        return createStartWaitAndLogApplication(joinLines(input));
+    }
+    
     protected Entity createStartWaitAndLogApplication(String input) throws Exception {
         Entity app = createAndStartApplication(input);
         waitForApplicationTasks(app);

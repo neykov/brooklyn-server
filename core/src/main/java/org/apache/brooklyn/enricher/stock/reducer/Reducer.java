@@ -34,7 +34,6 @@ import org.apache.brooklyn.core.enricher.AbstractEnricher;
 import org.apache.brooklyn.util.core.flags.SetFromFlag;
 import org.apache.brooklyn.util.core.sensor.SensorPredicates;
 import org.apache.brooklyn.util.core.task.Tasks;
-import org.apache.brooklyn.util.core.task.ValueResolver;
 import org.apache.brooklyn.util.text.StringFunctions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -78,7 +77,11 @@ public class Reducer extends AbstractEnricher implements SensorEventListener<Obj
         List<AttributeSensor<?>> sensorListTemp = Lists.newArrayList();
 
         for (Object sensorO : getConfig(SOURCE_SENSORS)) {
-            AttributeSensor<?> sensor = Tasks.resolving(sensorO).as(AttributeSensor.class).timeout(ValueResolver.REAL_QUICK_WAIT).context(producer).get();
+            AttributeSensor<?> sensor = Tasks.resolving(sensorO)
+                    .as(AttributeSensor.class)
+                    .immediately(true)
+                    .context(producer)
+                    .get();
             Optional<? extends Sensor<?>> foundSensor = Iterables.tryFind(sensorListTemp, 
                     SensorPredicates.nameEqualTo(sensor.getName()));
             

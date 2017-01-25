@@ -25,10 +25,16 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 
+import org.apache.brooklyn.api.mgmt.Task;
 import org.apache.brooklyn.api.sensor.SensorEvent;
 import org.apache.brooklyn.api.sensor.SensorEventListener;
+import org.apache.brooklyn.test.Asserts;
+import org.apache.brooklyn.util.collections.MutableList;
+import org.apache.brooklyn.util.core.task.Tasks;
+import org.testng.Assert;
 
 import com.google.common.base.Function;
+import com.google.common.base.Predicate;
 import com.google.common.collect.FluentIterable;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
@@ -41,6 +47,8 @@ import com.google.common.primitives.Longs;
 public class RecordingSensorEventListener<T> implements SensorEventListener<T>, Iterable<SensorEvent<T>> {
 
     private final List<SensorEvent<T>> events = Lists.newCopyOnWriteArrayList();
+    private final List<Task<?>> tasks = Lists.newCopyOnWriteArrayList();
+
     private final boolean suppressDuplicates;
     private T lastValue;
 
@@ -56,6 +64,7 @@ public class RecordingSensorEventListener<T> implements SensorEventListener<T>, 
     public void onEvent(SensorEvent<T> event) {
         if (!suppressDuplicates || events.isEmpty() || !Objects.equals(lastValue, event.getValue())) {
             events.add(event);
+            tasks.add(Tasks.current());
             lastValue = event.getValue();
         }
     }
@@ -65,6 +74,13 @@ public class RecordingSensorEventListener<T> implements SensorEventListener<T>, 
      */
     public List<SensorEvent<T>> getEvents() {
         return ImmutableList.copyOf(events);
+    }
+
+    /**
+     * The {@link {@link Tasks#current()} for each call to {@link #onEvent(SensorEvent)}
+     */
+    public List<Task<?>> getTasks() {
+        return MutableList.copyOf(tasks).asUnmodifiable();
     }
 
     /**
@@ -85,11 +101,33 @@ public class RecordingSensorEventListener<T> implements SensorEventListener<T>, 
                 .transform(new GetValueFunction<T>());
     }
 
+    public void assertHasEvent(Predicate<? super SensorEvent<T>> filter) {
+        for (SensorEvent<T> event : events) {
+            if (filter.apply(event)) {
+                return;
+            }
+        }
+        Assert.fail("No event matching filter "+ filter);
+    }
+
+    public void assertHasEventEventually(final Predicate<? super SensorEvent<T>> filter) {
+        Asserts.succeedsEventually(new Runnable() {
+            @Override
+            public void run() {
+                assertHasEvent(filter);
+            }});
+    }
+    
+    public void assertEventCount(int expected) {
+        Assert.assertEquals(events.size(), expected, "events="+events);
+    }
+
     /**
      * Clears all events recorded by the listener.
      */
     public void clearEvents() {
-        this.events.clear();
+        events.clear();
+        tasks.clear();
         lastValue = null;
     }
 
@@ -112,4 +150,8 @@ public class RecordingSensorEventListener<T> implements SensorEventListener<T>, 
         }
     }
 
+    @Override
+    public String toString() {
+        return getClass().getSimpleName() + "[size=" + getEvents().size() + "; events=" + getEvents() + "]";
+    }
 }

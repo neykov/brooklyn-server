@@ -73,18 +73,50 @@ import groovy.lang.Closure;
 @Beta
 public class Asserts {
 
+    // Used in annotations so needs to be a constant - can't be initialized similarly to DEFAULT_LONG_TIMEOUT
+    // TODO Can we force this by default on all unit tests, beforeMethod, afterMethod methods?
+    public static final long THIRTY_SECONDS_TIMEOUT_MS = 30000;
+
     /** 
-     * Timeout for use when something should happen within several seconds,
-     * but there might be network calls or computation so {@link #DEFAULT_SHORT_TIMEOUT} is not applicable.
+     * Timeout for use when something should happen. This is the *default timeout* that should
+     * be used by tests (unless that test is asserting performance).
+     * 
+     * We willingly accept the hit of slow failing tests, in exchange for removing the 
+     * false-negative failures that have historically littered our jenkins builds 
+     * (which are presumably sometimes run on over-contended or low-spec machines).
+     * 
+     * If the long timeout is irritates during dev (e.g. when doing TDD, where failing tests are 
+     * an important step), then one can change this value locally or set using something like
+     * {@code -Dbrooklyn.test.defaultTimeout=1s}.
      */
-    public static final Duration DEFAULT_LONG_TIMEOUT = Duration.THIRTY_SECONDS;
-    
+    public static final Duration DEFAULT_LONG_TIMEOUT;
+
+    static {
+        String defaultTimeout = System.getProperty("brooklyn.test.defaultTimeout");
+        if (defaultTimeout == null){
+            DEFAULT_LONG_TIMEOUT = Duration.millis(THIRTY_SECONDS_TIMEOUT_MS);
+        } else {
+            DEFAULT_LONG_TIMEOUT = Duration.of(defaultTimeout);
+        }
+    }
+
     /** 
-     * Timeout for use when waiting for other threads to finish.
+     * Timeout for use when waiting for other threads to (normally) finish.
      * <p>
-     * Long enough for parallel execution to catch up, 
-     * even on overloaded mediocre test boxes most of the time,
-     * but short enough not to irritate you when your test is failing. */
+     * Long enough for parallel execution to (normally!) catch up, even on overloaded mediocre 
+     * test boxes most of the time, but short enough not to irritate too much when waiting
+     * this long.
+     * 
+     * Never use this for asserting that a condition is satisfied within a given length of time.
+     * Instead use {@link #DEFAULT_LONG_TIMEOUT} to avoid the false-negatives that have 
+     * historically littered our jenkins builds.
+     * 
+     * Use this constant for asserting that something does *not* happen. If it was going to happen,
+     * then it's reasonable to expect it would normally have happened within this time. For 
+     * example, if we are asserting that no more events are received after unsubscribing, then
+     * this would be an appropriate timeout to use (perhaps by using 
+     * {@link #succeedsContinually(Runnable)}, which defaults to this timeout).
+     */
     public static final Duration DEFAULT_SHORT_TIMEOUT = Duration.ONE_SECOND;
     
     /** @deprecated since 0.9.0 use {@link #DEFAULT_LONG_TIMEOUT} */ @Deprecated
@@ -780,12 +812,12 @@ public class Asserts {
      * 
      * @param supplier supplies the value to test, such as {@link Suppliers#ofInstance(Object)} for a constant 
      * @param predicate the {@link Predicate} to apply to each value given by the supplier
-     * @param timeout how long to wait, default {@link #DEFAULT_SHORT_TIMEOUT}
+     * @param timeout how long to wait, default {@link #DEFAULT_LONG_TIMEOUT}
      * @param period how often to check, default quite often so you won't notice but letting the CPU do work
      * @param errMsg an error message to display if not satisfied, in addition to the last-tested supplied value and the predicate
      */
     public static <T> void eventually(Supplier<? extends T> supplier, Predicate<T> predicate, Duration timeout, Duration period, String errMsg) {
-        if (timeout==null) timeout = DEFAULT_SHORT_TIMEOUT;
+        if (timeout==null) timeout = DEFAULT_LONG_TIMEOUT;
         if (period==null) period = DEFAULT_SHORT_PERIOD;
         CountdownTimer timeleft = timeout.countdownTimer();
         
@@ -850,21 +882,21 @@ public class Asserts {
     }
     
     /**
-     * @see #succeedsContinually(Map, Callable)
+     * @see #succeedsEventually(Map, Callable)
      */
     public static void succeedsEventually(Runnable r) {
         succeedsEventually(ImmutableMap.<String,Object>of(), r);
     }
 
     /**
-     * @see #succeedsContinually(Map, Callable)
+     * @see #succeedsEventually(Map, Callable)
      */
     public static void succeedsEventually(Map<String,?> flags, Runnable r) {
         succeedsEventually(flags, toCallable(r));
     }
     
     /**
-     * @see #succeedsContinually(Map, Callable)
+     * @see #succeedsEventually(Map, Callable)
      */
     public static <T> T succeedsEventually(Callable<T> c) {
         return succeedsEventually(ImmutableMap.<String,Object>of(), c);
@@ -879,6 +911,7 @@ public class Asserts {
         public boolean asBoolean() {
             return value;
         }
+        @Override
         public String toString() {
             return message;
         }
@@ -887,6 +920,7 @@ public class Asserts {
     // TODO flags are ugly; remove this in favour of something strongly typed,
     // e.g. extending Repeater and taking the extra semantics.
     // TODO remove the #succeedsEventually in favour of #eventually (and same for continually)
+    //      Aled says why? I've found succeedsEventually to be a concise & clear way to write tests.
     /**
      * Convenience method for cases where we need to test until something is true.
      *
@@ -951,6 +985,7 @@ public class Asserts {
                     }
                     lastException = null;
                 } catch(Throwable e) {
+                    Exceptions.propagateIfInterrupt(e);
                     lastException = e;
                     if (log.isTraceEnabled()) log.trace("Attempt {} after {} ms: {}", new Object[] {attempt, System.currentTimeMillis() - startTime, e.getMessage()});
                     if (abortOnException) throw e;
@@ -966,10 +1001,11 @@ public class Asserts {
                 throw lastException;
             throw fail("invalid results; last was: "+result);
         } catch (Throwable t) {
+            Exceptions.propagateIfInterrupt(t);
             if (logException) log.info("failed succeeds-eventually, "+attempt+" attempts, "+
                     (System.currentTimeMillis()-startTime)+"ms elapsed "+
                     "(rethrowing): "+t);
-            throw Exceptions.propagateAnnotated("failed succeeds-eventually, "+attempt+" attempts, "+
+            throw new AssertionError("failed succeeds-eventually, "+attempt+" attempts, "+
                 (System.currentTimeMillis()-startTime)+"ms elapsed: "+Exceptions.collapseText(t), t);
         }
     }
@@ -988,7 +1024,7 @@ public class Asserts {
 
     // TODO unify with "continually"; see also eventually, some of those options might be useful
     public static <T> T succeedsContinually(Map<?,?> flags, Callable<T> job) {
-        Duration duration = toDuration(flags.get("timeout"), Duration.ONE_SECOND);
+        Duration duration = toDuration(flags.get("timeout"), DEFAULT_SHORT_TIMEOUT);
         Duration period = toDuration(flags.get("period"), Duration.millis(10));
         long periodMs = period.toMilliseconds();
         long startTime = System.currentTimeMillis();
@@ -1028,6 +1064,7 @@ public class Asserts {
     
     public static void assertFailsWith(Callable<?> c, final Closure<Boolean> exceptionChecker) {
         assertFailsWith(c, new Predicate<Throwable>() {
+            @Override
             public boolean apply(Throwable input) {
                 return exceptionChecker.call(input);
             }
@@ -1042,6 +1079,7 @@ public class Asserts {
                 .build();
         
         assertFailsWith(c, new Predicate<Throwable>() {
+            @Override
             public boolean apply(Throwable e) {
                 for (Class<?> validException: validExceptions) {
                     if (validException.isInstance(e)) return true;
@@ -1316,6 +1354,7 @@ public class Asserts {
             this.task = task;
             this.result = result;
         }
+        @Override
         public T call() {
             task.run();
             return result;

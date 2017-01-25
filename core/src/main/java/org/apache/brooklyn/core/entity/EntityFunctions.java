@@ -19,7 +19,7 @@
 package org.apache.brooklyn.core.entity;
 
 import static com.google.common.base.Preconditions.checkNotNull;
-import static org.apache.brooklyn.util.groovy.GroovyJavaMethods.elvis;
+import static org.apache.brooklyn.util.JavaGroovyEquivalents.elvis;
 
 import java.util.Collection;
 import java.util.Map;
@@ -104,7 +104,7 @@ public class EntityFunctions {
             @SuppressWarnings({ "unchecked", "rawtypes" })
             @Override public Void apply(Entity input) {
                 for (Map.Entry<AttributeSensor<?>,Object> entry : values.entrySet()) {
-                    AttributeSensor sensor = (AttributeSensor)entry.getKey();
+                    AttributeSensor sensor = entry.getKey();
                     Object value = entry.getValue();
                     if (value==Entities.UNCHANGED) {
                         // nothing
@@ -281,7 +281,7 @@ public class EntityFunctions {
         @SuppressWarnings({ "unchecked", "rawtypes" })
         @Override public Void apply(Entity input) {
             for (Map.Entry<AttributeSensor<?>,Object> entry : values.entrySet()) {
-                AttributeSensor sensor = (AttributeSensor)entry.getKey();
+                AttributeSensor sensor = entry.getKey();
                 Object value = entry.getValue();
                 if (value==Entities.UNCHANGED) {
                     // nothing

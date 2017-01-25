@@ -135,6 +135,15 @@ public abstract class Maybe<T> implements Serializable, Supplier<T> {
         return ofAllowingNull(value);
     }
     
+    /**
+     * Casts the given value to the desired type. This is valid because {@link Maybe} is immutable,
+     * so things like {@code Maybe<Object>} is a super-type of {@code Maybe<String>}.
+     */
+    @SuppressWarnings("unchecked")
+    public static <T> Maybe<T> cast(Maybe<? extends T> value) {
+        return (Maybe<T>) value;
+    }
+    
     /** Converts the given {@link Maybe} to {@link Optional}, failing if this {@link Maybe} contains null. */
     public Optional<T> toOptional() {
         if (isPresent()) return Optional.of(get());
@@ -146,6 +155,11 @@ public abstract class Maybe<T> implements Serializable, Supplier<T> {
      * This method is provided for consistency with {@link Optional#fromNullable(Object)}. */
     public static <T> Maybe<T> fromNullable(@Nullable T value) {
         return ofDisallowingNull(value);
+    }
+    
+    /** Creates a new Maybe object out of the {@link Optional} argument */
+    public static <T> Maybe<T> fromOptional(Optional<T> value) {
+        return Maybe.fromNullable(value.orNull());
     }
     
     /** creates an instance wrapping a {@link SoftReference}, so it might go absent later on.
@@ -198,6 +212,7 @@ public abstract class Maybe<T> implements Serializable, Supplier<T> {
     }
 
     public abstract boolean isPresent();
+    @Override
     public abstract T get();
     
     public boolean isAbsent() {
@@ -260,6 +275,7 @@ public abstract class Maybe<T> implements Serializable, Supplier<T> {
     public <V> Maybe<V> transform(final Function<? super T, V> f) {
         if (isPresent()) return new AbstractPresent<V>() {
             private static final long serialVersionUID = 325089324325L;
+            @Override
             public V get() {
                 return f.apply(Maybe.this.get());
             }
@@ -321,6 +337,7 @@ public abstract class Maybe<T> implements Serializable, Supplier<T> {
         public T get() {
             throw getException();
         }
+        @Override
         public T orThrowUnwrapped() {
             throw getException();
         }

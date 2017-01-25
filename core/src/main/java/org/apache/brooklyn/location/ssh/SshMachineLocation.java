@@ -18,7 +18,7 @@
  */
 package org.apache.brooklyn.location.ssh;
 
-import static org.apache.brooklyn.util.groovy.GroovyJavaMethods.truth;
+import static org.apache.brooklyn.util.JavaGroovyEquivalents.groovyTruth;
 
 import java.io.Closeable;
 import java.io.File;
@@ -30,7 +30,6 @@ import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.io.Reader;
-import java.io.StringReader;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -165,7 +164,6 @@ public class SshMachineLocation extends AbstractLocation implements MachineLocat
      * brooklyn.location.named.myLocation = byon:(hosts=1.2.3.4,user=myname)
      * brooklyn.location.named.myLocation.sshToolClass = com.acme.brooklyn.MyCustomSshTool
      * brooklyn.location.named.myLocation.sshToolClass.myparam = myvalue
-     * }
      * }
      * </pre>
      * <p>
@@ -364,6 +362,7 @@ public class SshMachineLocation extends AbstractLocation implements MachineLocat
                     }
                 })
                 .build(new CacheLoader<Map<String, ?>, Pool<SshTool>>() {
+                    @Override
                     public Pool<SshTool> load(Map<String, ?> properties) {
                         if (LOG.isDebugEnabled()) {
                             LOG.debug("{} building ssh pool for {} with properties: {}",
@@ -430,7 +429,7 @@ public class SshMachineLocation extends AbstractLocation implements MachineLocat
         boolean deferConstructionChecks = (properties.containsKey("deferConstructionChecks") && TypeCoercions.coerce(properties.get("deferConstructionChecks"), Boolean.class));
         if (!deferConstructionChecks) {
             if (getDisplayName() == null) {
-                setDisplayName((truth(user) ? user+"@" : "") + address.getHostName());
+                setDisplayName((groovyTruth(user) ? user+"@" : "") + address.getHostName());
             }
         }
         return this;
@@ -518,16 +517,6 @@ public class SshMachineLocation extends AbstractLocation implements MachineLocat
         sshPoolCacheOrNull = null;
     }
 
-    // should not be necessary, and causes objects to be kept around a lot longer than desired
-//    @Override
-//    protected void finalize() throws Throwable {
-//        try {
-//            close();
-//        } finally {
-//            super.finalize();
-//        }
-//    }
-
     @Override
     public InetAddress getAddress() {
         return address;
@@ -559,7 +548,7 @@ public class SshMachineLocation extends AbstractLocation implements MachineLocat
     }
 
     public String getUser() {
-        if (!truth(user)) {
+        if (!groovyTruth(user)) {
             if (config().getLocalRaw(SshTool.PROP_USER).isPresent()) {
                 LOG.warn("User configuration for "+this+" set after deployment; deprecated behaviour may not be supported in future versions");
             }
@@ -594,7 +583,7 @@ public class SshMachineLocation extends AbstractLocation implements MachineLocat
             LOG.trace("{} execSsh got pool: {}", this, pool);
         }
 
-        if (truth(props.get(CLOSE_CONNECTION.getName()))) {
+        if (groovyTruth(props.get(CLOSE_CONNECTION.getName()))) {
             Function<SshTool, T> close = new Function<SshTool, T>() {
                 @Override
                 public T apply(SshTool input) {
@@ -620,7 +609,7 @@ public class SshMachineLocation extends AbstractLocation implements MachineLocat
     protected boolean previouslyConnected = false;
     protected SshTool connectSsh(Map props) {
         try {
-            if (!truth(user)) {
+            if (!groovyTruth(user)) {
                 String newUser = getUser();
                 if (LOG.isTraceEnabled()) LOG.trace("For "+this+", setting user in connectSsh: oldUser="+user+"; newUser="+newUser);
                 user = newUser;
@@ -857,6 +846,7 @@ public class SshMachineLocation extends AbstractLocation implements MachineLocat
             return copyTo(props, src, destination);
         } else {
             return execSsh(props, new Function<ShellTool,Integer>() {
+                @Override
                 public Integer apply(ShellTool ssh) {
                     return ((SshTool) ssh).copyToServer(props, new KnownSizeInputStream(src, filesize), destination);
                 }});
@@ -866,6 +856,7 @@ public class SshMachineLocation extends AbstractLocation implements MachineLocat
     // Closes input stream before returning
     public int copyTo(final Map<String,?> props, final InputStream src, final String destination) {
         return execSsh(props, new Function<ShellTool,Integer>() {
+            @Override
             public Integer apply(ShellTool ssh) {
                 return ((SshTool)ssh).copyToServer(props, src, destination);
             }});
@@ -877,6 +868,7 @@ public class SshMachineLocation extends AbstractLocation implements MachineLocat
     }
     public int copyFrom(final Map<String,?> props, final String remote, final String local) {
         return execSsh(props, new Function<ShellTool,Integer>() {
+            @Override
             public Integer apply(ShellTool ssh) {
                 return ((SshTool)ssh).copyFromServer(props, remote, new File(local));
             }});
@@ -995,7 +987,7 @@ public class SshMachineLocation extends AbstractLocation implements MachineLocat
     @Override
     public void releasePort(int portNumber) {
         synchronized (usedPorts) {
-            usedPorts.remove((Object) portNumber);
+            usedPorts.remove(portNumber);
         }
     }
 

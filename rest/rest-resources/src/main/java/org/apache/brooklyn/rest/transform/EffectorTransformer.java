@@ -31,7 +31,6 @@ import org.apache.brooklyn.rest.domain.EffectorSummary;
 import org.apache.brooklyn.rest.domain.EffectorSummary.ParameterSummary;
 import org.apache.brooklyn.rest.util.WebResourceUtils;
 import org.apache.brooklyn.util.core.task.Tasks;
-import org.apache.brooklyn.util.core.task.ValueResolver;
 import org.apache.brooklyn.util.exceptions.Exceptions;
 import org.apache.brooklyn.util.guava.Maybe;
 
@@ -80,8 +79,11 @@ public class EffectorTransformer {
     @SuppressWarnings({ "unchecked", "rawtypes" })
     protected static EffectorSummary.ParameterSummary<?> parameterSummary(Entity entity, ParameterType<?> parameterType) {
         try {
-            Maybe<?> defaultValue = Tasks.resolving(parameterType.getDefaultValue()).as(parameterType.getParameterClass())
-                .context(entity).timeout(ValueResolver.REAL_QUICK_WAIT).getMaybe();
+            Maybe<?> defaultValue = Tasks.resolving(parameterType.getDefaultValue())
+                    .as(parameterType.getParameterClass())
+                    .context(entity)
+                    .immediately(true)
+                    .getMaybe();
             return new ParameterSummary(parameterType.getName(), parameterType.getParameterClassName(), 
                 parameterType.getDescription(), 
                 WebResourceUtils.getValueForDisplay(defaultValue.orNull(), true, false),

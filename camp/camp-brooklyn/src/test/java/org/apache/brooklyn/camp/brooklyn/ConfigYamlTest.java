@@ -19,6 +19,7 @@
 package org.apache.brooklyn.camp.brooklyn;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import java.util.concurrent.Callable;
@@ -26,6 +27,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import org.apache.brooklyn.api.entity.Entity;
+import org.apache.brooklyn.core.config.ConfigKeys;
 import org.apache.brooklyn.core.sensor.Sensors;
 import org.apache.brooklyn.core.test.entity.TestEntity;
 import org.slf4j.Logger;
@@ -60,6 +62,69 @@ public class ConfigYamlTest extends AbstractYamlTest {
     public void tearDown() throws Exception {
         super.tearDown();
         if (executor != null) executor.shutdownNow();
+    }
+
+    @Test
+    public void testConfigInConfigBlock() throws Exception {
+        String yaml = Joiner.on("\n").join(
+                "services:",
+                "- type: org.apache.brooklyn.core.test.entity.TestEntity",
+                "  brooklyn.config:",
+                "    test.confName: myName",
+                "    test.confObject: myObj",
+                "    confStringAlias: myString",
+                "    test.confDynamic: myDynamic",
+                "    myField: myFieldVal",
+                "    myField2Alias: myField2Val");
+
+        final Entity app = createStartWaitAndLogApplication(yaml);
+        TestEntity entity = (TestEntity) Iterables.getOnlyElement(app.getChildren());
+
+        assertEquals(entity.config().get(TestEntity.CONF_NAME), "myName"); // confName has @SetFromFlag("confName"); using full name
+        assertEquals(entity.config().get(TestEntity.CONF_OBJECT), "myObj"); // confObject does not have @SetFromFlag
+        assertEquals(entity.config().get(TestEntity.CONF_STRING), "myString"); // set using the @SetFromFlag alias
+        assertEquals(entity.config().get(ConfigKeys.newStringConfigKey("test.confDynamic")), "myDynamic"); // not defined on entity
+
+        // This isn't exactly desired behaviour, just a demonstration of what happens!
+        // The names used in YAML correspond to fields with @SetFromFlag. The values end up in the
+        // {@link EntitySpec#config} rather than {@link EntitySpec#flags}. The field is not set.
+        assertNull(entity.getMyField()); // field with @SetFromFlag
+        assertNull(entity.getMyField2()); // field with @SetFromFlag("myField2Alias"), set using alias
+    }
+
+    @Test
+    public void testConfigAtTopLevel() throws Exception {
+        // This style is discouraged - instead use a "brooklyn.config:" block.
+        // However, it's important we don't break this as blueprints in the wild rely on it!
+        String yaml = Joiner.on("\n").join(
+                "services:",
+                "- type: org.apache.brooklyn.core.test.entity.TestEntity",
+                "  test.confName: myName",
+                "  test.confObject: myObj",
+                "  confStringAlias: myString",
+                "  test.confDynamic: myDynamic",
+                "  myField: myFieldVal",
+                "  myField2Alias: myField2Val");
+
+        final Entity app = createStartWaitAndLogApplication(yaml);
+        TestEntity entity = (TestEntity) Iterables.getOnlyElement(app.getChildren());
+     
+        assertEquals(entity.config().get(TestEntity.CONF_NAME), "myName"); // confName has @SetFromFlag("confName"); using full name
+        assertEquals(entity.config().get(TestEntity.CONF_OBJECT), "myObj"); // confObject does not have @SetFromFlag
+        assertEquals(entity.config().get(TestEntity.CONF_STRING), "myString"); // set using the @SetFromFlag alias
+        
+        // The "dynamic" config key (i.e. not defined on the entity's type) is not picked up to 
+        // be set on the entity if it's not inside the "brooklyn.config" block. This isn't exactly
+        // desired behaviour, but it is what happens! This test is more to demonstrate the behaviour
+        // than to say it is definitely what we want! But like the comment at the start of the 
+        // method says, this style is discouraged so we don't really care.
+        assertNull(entity.config().get(ConfigKeys.newStringConfigKey("test.confDynamic"))); // not defined on entity
+        
+        // Again this isn't exactly desired behaviour, just a demonstration of what happens!
+        // The names used in YAML correspond to fields with @SetFromFlag. The values end up in the
+        // {@link EntitySpec#config} rather than {@link EntitySpec#flags}. The field is not set.
+        assertNull(entity.getMyField()); // field with @SetFromFlag
+        assertNull(entity.getMyField2()); // field with @SetFromFlag("myField2Alias"), set using alias
     }
 
     @Test
@@ -207,6 +272,7 @@ public class ConfigYamlTest extends AbstractYamlTest {
 
         // Now set the attribute: get will return once that has happened
         executor.submit(new Callable<Object>() {
+            @Override
             public Object call() {
                 return entity.sensors().set(Sensors.newStringSensor("myOtherSensor"), "myOther");
             }});
@@ -253,6 +319,7 @@ public class ConfigYamlTest extends AbstractYamlTest {
 
         // Now set the attribute: get will return once that has happened
         executor.submit(new Callable<Object>() {
+            @Override
             public Object call() {
                 return entity.sensors().set(Sensors.newStringSensor("myOtherSensor"), "myOther");
             }});
@@ -303,6 +370,7 @@ public class ConfigYamlTest extends AbstractYamlTest {
 
         // Now set the attribute: get will return once that has happened
         executor.submit(new Callable<Object>() {
+            @Override
             public Object call() {
                 return entity.sensors().set(Sensors.newStringSensor("myOtherSensor"), "myOther");
             }});

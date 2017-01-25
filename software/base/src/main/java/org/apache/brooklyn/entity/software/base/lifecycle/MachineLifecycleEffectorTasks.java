@@ -25,6 +25,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicReference;
 
 import javax.annotation.Nullable;
 
@@ -49,6 +50,8 @@ import org.apache.brooklyn.core.entity.Attributes;
 import org.apache.brooklyn.core.entity.BrooklynConfigKeys;
 import org.apache.brooklyn.core.entity.Entities;
 import org.apache.brooklyn.core.entity.EntityInternal;
+import org.apache.brooklyn.core.entity.internal.AttributesInternal;
+import org.apache.brooklyn.core.entity.internal.AttributesInternal.ProvisioningTaskState;
 import org.apache.brooklyn.core.entity.lifecycle.Lifecycle;
 import org.apache.brooklyn.core.entity.lifecycle.Lifecycle.Transition;
 import org.apache.brooklyn.core.entity.lifecycle.ServiceStateLogic;
@@ -62,6 +65,7 @@ import org.apache.brooklyn.core.location.cloud.CloudLocationConfig;
 import org.apache.brooklyn.core.mgmt.BrooklynTaskTags;
 import org.apache.brooklyn.core.mgmt.entitlement.Entitlements;
 import org.apache.brooklyn.core.sensor.BasicAttributeSensor;
+import org.apache.brooklyn.core.sensor.ReleaseableLatch;
 import org.apache.brooklyn.entity.machine.MachineInitTasks;
 import org.apache.brooklyn.entity.machine.ProvidesProvisioningFlags;
 import org.apache.brooklyn.entity.software.base.SoftwareProcess;
@@ -77,6 +81,7 @@ import org.apache.brooklyn.util.collections.MutableSet;
 import org.apache.brooklyn.util.core.config.ConfigBag;
 import org.apache.brooklyn.util.core.task.DynamicTasks;
 import org.apache.brooklyn.util.core.task.Tasks;
+import org.apache.brooklyn.util.core.task.ValueResolverIterator;
 import org.apache.brooklyn.util.core.task.system.ProcessTaskWrapper;
 import org.apache.brooklyn.util.exceptions.Exceptions;
 import org.apache.brooklyn.util.guava.Maybe;
@@ -90,7 +95,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.annotations.Beta;
-import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Supplier;
 import com.google.common.base.Suppliers;
@@ -109,12 +113,12 @@ import com.google.common.reflect.TypeToken;
  * <ul>
  *  <li> {@link #startProcessesAtMachine(Supplier)} (required)
  *  <li> {@link #stopProcessesAtMachine()} (required, but can be left blank if you assume the VM will be destroyed)
- *  <li> {@link #preStartCustom(MachineLocation)}
+ *  <li> {@link #preStartCustom(MachineLocation, AtomicReference)}
  *  <li> {@link #postStartCustom()}
- *  <li> {@link #preStopCustom()}
+ *  <li> {@link #preStopConfirmCustom(AtomicReference)}
  *  <li> {@link #postStopCustom()}
  * </ul>
- * Note methods at this level typically look after the {@link Attributes#SERVICE_STATE} sensor.
+ * Note methods at this level typically look after the {@link Attributes#SERVICE_STATE_ACTUAL} sensor.
  *
  * @since 0.6.0
  */
@@ -143,30 +147,12 @@ public abstract class MachineLifecycleEffectorTasks {
             Duration.minutes(10));
 
     @Beta
-    public static final AttributeSensor<ProvisioningTaskState> INTERNAL_PROVISIONING_TASK_STATE = new BasicAttributeSensor<ProvisioningTaskState>(
-            TypeToken.of(ProvisioningTaskState.class), 
-            "internal.provisioning.task.state",
-            "Internal transient sensor (do not use) for tracking the provisioning of a machine (to better handle aborting)", 
-            AttributeSensor.SensorPersistenceMode.NONE);
-    
-    @Beta
     public static final AttributeSensor<MachineLocation> INTERNAL_PROVISIONED_MACHINE = new BasicAttributeSensor<MachineLocation>(
             TypeToken.of(MachineLocation.class), 
             "internal.provisioning.task.machine",
             "Internal transient sensor (do not use) for tracking the machine being provisioned (to better handle aborting)", 
             AttributeSensor.SensorPersistenceMode.NONE);
     
-    /**
-     * Used only internally by {@link org.apache.brooklyn.entity.software.base.lifecycle.MachineLifecycleEffectorTasks}
-     * to track provisioning, so machine can be terminated if stopped while opaque provision call is being made.
-     */
-    @Beta
-    @VisibleForTesting
-    public enum ProvisioningTaskState {
-        RUNNING,
-        DONE;
-    }
-
     protected final MachineInitTasks machineInitTasks = new MachineInitTasks();
     
     /** Attaches lifecycle effectors (start, restart, stop) to the given entity post-creation. */
@@ -379,9 +365,21 @@ public abstract class MachineLifecycleEffectorTasks {
         Preconditions.checkState(locationS != null, "Unsupported location "+location+", when starting "+entity());
 
         final Supplier<MachineLocation> locationSF = locationS;
-        preStartAtMachineAsync(locationSF);
-        DynamicTasks.queue("start (processes)", new StartProcessesAtMachineTask(locationSF));
-        postStartAtMachineAsync();
+        final AtomicReference<ReleaseableLatch> startLatchRef = new AtomicReference<>();
+
+        // Opportunity to block startup until other dependent components are available
+        startLatchRef.set(waitForLatch(entity(), SoftwareProcess.START_LATCH));
+        try {
+            preStartAtMachineAsync(locationSF);
+            DynamicTasks.queue("start (processes)", new StartProcessesAtMachineTask(locationSF));
+            postStartAtMachineAsync();
+        } finally {
+            DynamicTasks.drain(null, false);
+            ReleaseableLatch startLatch = startLatchRef.get();
+            if (startLatch != null) {
+                startLatch.release(entity());
+            }
+        }
     }
 
     private class StartProcessesAtMachineTask implements Runnable {
@@ -411,6 +409,7 @@ public abstract class MachineLifecycleEffectorTasks {
             this.location = location;
         }
 
+        @Override
         public MachineLocation call() throws Exception {
             // Blocks if a latch was configured.
             entity().getConfig(BrooklynConfigKeys.PROVISION_LATCH);
@@ -424,24 +423,25 @@ public abstract class MachineLifecycleEffectorTasks {
             if (expectedState != null && (expectedState.getState() == Lifecycle.STOPPING || expectedState.getState() == Lifecycle.STOPPED)) {
                 throw new IllegalStateException("Provisioning aborted before even begun for "+entity()+" in "+location+" (presumably by a concurrent call to stop");
             }
-            entity().sensors().set(INTERNAL_PROVISIONING_TASK_STATE, ProvisioningTaskState.RUNNING);
+            entity().sensors().set(AttributesInternal.INTERNAL_PROVISIONING_TASK_STATE, ProvisioningTaskState.RUNNING);
             
             MachineLocation machine;
             try {
                 machine = Tasks.withBlockingDetails("Provisioning machine in " + location, new ObtainLocationTask(location, flags));
                 entity().sensors().set(INTERNAL_PROVISIONED_MACHINE, machine);
             } finally {
-                entity().sensors().set(INTERNAL_PROVISIONING_TASK_STATE, ProvisioningTaskState.DONE);
+                entity().sensors().remove(AttributesInternal.INTERNAL_PROVISIONING_TASK_STATE);
             }
             
             if (machine == null) {
                 throw new NoMachinesAvailableException("Failed to obtain machine in " + location.toString());
             }
-            if (log.isDebugEnabled())
+            if (log.isDebugEnabled()) {
                 log.debug("While starting {}, obtained new location instance {}", entity(),
                         (machine instanceof SshMachineLocation
                                 ? machine + ", details " + ((SshMachineLocation) machine).getUser() + ":" + Sanitizer.sanitize(((SshMachineLocation) machine).config().getLocalBag())
                                 : machine));
+            }
             return machine;
         }
     }
@@ -455,21 +455,28 @@ public abstract class MachineLifecycleEffectorTasks {
             this.location = location;
         }
 
+        @Override
         public MachineLocation call() throws NoMachinesAvailableException {
             return location.obtain(flags);
         }
     }
 
-    /** Wraps a call to {@link #preStartCustom(MachineLocation)}, after setting the hostname and address. */
+    /**
+     * Wraps a call to {@link #preStartCustom(MachineLocation)}, after setting the hostname and address.
+     * @deprecated since 0.11.0. Use {@link #preStartAtMachineAsync(Supplier, AtomicReference)} instead.
+     */
+    @Deprecated
     protected void preStartAtMachineAsync(final Supplier<MachineLocation> machineS) {
         DynamicTasks.queue("pre-start", new PreStartTask(machineS.get()));
     }
 
     private class PreStartTask implements Runnable {
         final MachineLocation machine;
+
         private PreStartTask(MachineLocation machine) {
             this.machine = machine;
         }
+        @Override
         public void run() {
             log.info("Starting {} on machine {}", entity(), machine);
             Collection<Location> oldLocs = entity().getLocations();
@@ -505,7 +512,10 @@ public abstract class MachineLifecycleEffectorTasks {
             entity().sensors().set(Attributes.ADDRESS, machine.getAddress().getHostAddress());
             if (machine instanceof SshMachineLocation) {
                 SshMachineLocation sshMachine = (SshMachineLocation) machine;
-                UserAndHostAndPort sshAddress = UserAndHostAndPort.fromParts(sshMachine.getUser(), sshMachine.getAddress().getHostName(), sshMachine.getPort());
+                UserAndHostAndPort sshAddress = UserAndHostAndPort.fromParts(
+                        sshMachine.getUser(), sshMachine.getAddress().getHostName(), sshMachine.getPort());
+                // FIXME: Who or what is SSH_ADDRESS intended for? It's not necessarily the address that
+                // the SshMachineLocation is using for ssh connections (because it accepts SSH_HOST as an override).
                 entity().sensors().set(Attributes.SSH_ADDRESS, sshAddress);
             }
 
@@ -534,6 +544,7 @@ public abstract class MachineLifecycleEffectorTasks {
             }
             resolveOnBoxDir(entity(), machine);
             preStartCustom(machine);
+
         }
     }
 
@@ -594,17 +605,9 @@ public abstract class MachineLifecycleEffectorTasks {
                     "("+paramSummary+" not compatible: "+oldParam+" / "+newParam+"); "+newLoc+" may require manual removal.");
     }
 
-    /**
-     * Default pre-start hooks.
-     * <p>
-     * Can be extended by subclasses if needed.
-     */
+    @Deprecated
     protected void preStartCustom(MachineLocation machine) {
         ConfigToAttributes.apply(entity());
-
-        // Opportunity to block startup until other dependent components are available
-        Object val = entity().getConfig(SoftwareProcess.START_LATCH);
-        if (val != null) log.debug("{} finished waiting for start-latch {}; continuing...", entity(), val);
     }
 
     protected Map<String, Object> obtainProvisioningFlags(final MachineProvisioningLocation<?> location) {
@@ -621,6 +624,7 @@ public abstract class MachineLifecycleEffectorTasks {
     }
 
     private class PostStartTask implements Runnable {
+        @Override
         public void run() {
             postStartCustom();
         }
@@ -740,7 +744,7 @@ public abstract class MachineLifecycleEffectorTasks {
      * If no errors were encountered call {@link #postStopCustom()} at the end.
      */
     public void stop(ConfigBag parameters) {
-        doStop(parameters, new StopAnyProvisionedMachinesTask());
+        doStopLatching(parameters, new StopAnyProvisionedMachinesTask());
     }
 
     /**
@@ -748,7 +752,21 @@ public abstract class MachineLifecycleEffectorTasks {
      * {@link #stopAnyProvisionedMachines}.
      */
     public void suspend(ConfigBag parameters) {
-        doStop(parameters, new SuspendAnyProvisionedMachinesTask());
+        doStopLatching(parameters, new SuspendAnyProvisionedMachinesTask());
+    }
+
+    protected void doStopLatching(ConfigBag parameters, Callable<StopMachineDetails<Integer>> stopTask) {
+        AtomicReference<ReleaseableLatch> stopLatchRef = new AtomicReference<>();
+        try {
+            stopLatchRef.set(waitForLatch(entity(), SoftwareProcess.STOP_LATCH));
+            doStop(parameters, stopTask);
+        } finally {
+            DynamicTasks.drain(null, false);
+            ReleaseableLatch stopLatch = stopLatchRef.get();
+            if (stopLatch != null) {
+                stopLatch.release(entity());
+            }
+        }
     }
 
     protected void doStop(ConfigBag parameters, Callable<StopMachineDetails<Integer>> stopTask) {
@@ -781,7 +799,7 @@ public abstract class MachineLifecycleEffectorTasks {
         // There is some attempt to handle it by ProvisionMachineTask checking if the expectedState
         // is stopping/stopped.
         Maybe<MachineLocation> machine = Machines.findUniqueMachineLocation(entity().getLocations());
-        ProvisioningTaskState provisioningState = entity().sensors().get(INTERNAL_PROVISIONING_TASK_STATE);
+        ProvisioningTaskState provisioningState = entity().sensors().get(AttributesInternal.INTERNAL_PROVISIONING_TASK_STATE);
 
         if (machine.isAbsent() && provisioningState == ProvisioningTaskState.RUNNING) {
             Duration maxWait = entity().config().get(STOP_WAIT_PROVISIONING_TIMEOUT);
@@ -790,8 +808,8 @@ public abstract class MachineLifecycleEffectorTasks {
                     .until(new Callable<Boolean>() {
                         @Override
                         public Boolean call() throws Exception {
-                            ProvisioningTaskState state = entity().sensors().get(INTERNAL_PROVISIONING_TASK_STATE);
-                            return (state == ProvisioningTaskState.DONE);
+                            ProvisioningTaskState state = entity().sensors().get(AttributesInternal.INTERNAL_PROVISIONING_TASK_STATE);
+                            return (state != ProvisioningTaskState.RUNNING);
                         }})
                     .backoffTo(Duration.FIVE_SECONDS)
                     .limitTimeTo(maxWait)
@@ -801,7 +819,7 @@ public abstract class MachineLifecycleEffectorTasks {
             }
             machine = Maybe.ofDisallowingNull(entity().sensors().get(INTERNAL_PROVISIONED_MACHINE));
         }
-        entity().sensors().remove(INTERNAL_PROVISIONING_TASK_STATE);
+        entity().sensors().remove(AttributesInternal.INTERNAL_PROVISIONING_TASK_STATE);
         entity().sensors().remove(INTERNAL_PROVISIONED_MACHINE);
 
         Task<List<?>> stoppingProcess = null;
@@ -871,18 +889,21 @@ public abstract class MachineLifecycleEffectorTasks {
     }
 
     private class StopAnyProvisionedMachinesTask implements Callable<StopMachineDetails<Integer>> {
+        @Override
         public StopMachineDetails<Integer> call() {
             return stopAnyProvisionedMachines();
         }
     }
 
     private class SuspendAnyProvisionedMachinesTask implements Callable<StopMachineDetails<Integer>> {
+        @Override
         public StopMachineDetails<Integer> call() {
             return suspendAnyProvisionedMachines();
         }
     }
 
     private class StopProcessesAtMachineTask implements Callable<String> {
+        @Override
         public String call() {
             DynamicTasks.markInessential();
             stopProcessesAtMachine();
@@ -892,6 +913,7 @@ public abstract class MachineLifecycleEffectorTasks {
     }
 
     private class StopFeedsAtMachineTask implements Callable<String> {
+        @Override
         public String call() {
             DynamicTasks.markInessential();
             for (Feed feed : entity().feeds().getFeeds()) {
@@ -903,6 +925,7 @@ public abstract class MachineLifecycleEffectorTasks {
     }
 
     private class StopMachineTask implements Callable<String> {
+        @Override
         public String call() {
             DynamicTasks.markInessential();
             stop(ConfigBag.newInstance().configure(StopSoftwareParameters.STOP_MACHINE_MODE, StopMode.IF_NOT_STOPPED));
@@ -912,6 +935,7 @@ public abstract class MachineLifecycleEffectorTasks {
     }
 
     private class PreStopCustomTask implements Callable<String> {
+        @Override
         public String call() {
             if (entity().getAttribute(SoftwareProcess.SERVICE_STATE_ACTUAL) == Lifecycle.STOPPED) {
                 log.debug("Skipping stop of entity " + entity() + " when already stopped");
@@ -925,6 +949,7 @@ public abstract class MachineLifecycleEffectorTasks {
     }
 
     private class PostStopCustomTask implements Callable<Void> {
+        @Override
         public Void call() {
             postStopCustom();
             return null;
@@ -946,14 +971,8 @@ public abstract class MachineLifecycleEffectorTasks {
                 stopMode == StopMode.IF_NOT_STOPPED && !isStopped;
     }
 
-    /** 
-     * Override to check whether stop can be executed.
-     * Throw if stop should be aborted.
-     */
+    @Deprecated
     protected void preStopConfirmCustom() {
-        // Opportunity to block stop() until other dependent components are ready for it
-        Object val = entity().getConfig(SoftwareProcess.STOP_LATCH);
-        if (val != null) log.debug("{} finished waiting for stop-latch {}; continuing...", entity(), val);
     }
 
     protected void preStopCustom() {
@@ -1018,10 +1037,17 @@ public abstract class MachineLifecycleEffectorTasks {
             log.debug("No decommissioning necessary for "+entity()+" - not a machine location ("+machine+")");
             return new StopMachineDetails<Integer>("No machine decommissioning necessary - not a machine ("+machine+")", 0);
         }
-        
-        clearEntityLocationAttributes(machine);
-        provisioner.release((MachineLocation)machine);
 
+        entity().sensors().set(AttributesInternal.INTERNAL_TERMINATION_TASK_STATE, ProvisioningTaskState.RUNNING);
+        try {
+            clearEntityLocationAttributes(machine);
+            provisioner.release((MachineLocation)machine);
+        } finally {
+            // TODO On exception, should we add the machine back to the entity (because it might not really be terminated)?
+            //      Do we need a better exception hierarchy for that?
+            entity().sensors().remove(AttributesInternal.INTERNAL_TERMINATION_TASK_STATE);
+        }
+        
         return new StopMachineDetails<Integer>("Decommissioned "+machine, 1);
     }
 
@@ -1078,4 +1104,39 @@ public abstract class MachineLifecycleEffectorTasks {
         entity().sensors().set(Attributes.SUBNET_ADDRESS, null);
     }
 
+    public static ReleaseableLatch waitForLatch(EntityInternal entity, ConfigKey<Boolean> configKey) {
+        Maybe<?> rawValue = entity.config().getRaw(configKey);
+        if (rawValue.isAbsent()) {
+            return ReleaseableLatch.NOP;
+        } else {
+            ValueResolverIterator<Boolean> iter = resolveLatchIterator(entity, rawValue.get(), configKey);
+            Maybe<ReleaseableLatch> releasableLatchMaybe = iter.next(ReleaseableLatch.class);
+            if (releasableLatchMaybe.isPresent()) {
+                ReleaseableLatch latch = releasableLatchMaybe.get();
+                log.debug("{} finished waiting for {} (value {}); waiting to acquire the latch", new Object[] {entity, configKey, latch});
+                Tasks.setBlockingDetails("Acquiring " + configKey + " " + latch);
+                try {
+                    latch.acquire(entity);
+                } finally {
+                    Tasks.resetBlockingDetails();
+                }
+                log.debug("{} Acquired latch {} (value {}); continuing...", new Object[] {entity, configKey, latch});
+                return latch;
+            } else {
+                // If iter.next() above returned absent due to a resolve error next line will throw with the cause
+                Boolean val = iter.last().get();
+                if (rawValue != null) log.debug("{} finished waiting for {} (value {}); continuing...", new Object[] {entity, configKey, val});
+                return ReleaseableLatch.NOP;
+            }
+        }
+    }
+
+    private static ValueResolverIterator<Boolean> resolveLatchIterator(EntityInternal entity, Object val, ConfigKey<Boolean> key) {
+        return Tasks.resolving(val, Boolean.class)
+                .context(entity.getExecutionContext())
+                .description("config " + key.getName())
+                .iterator();
+    }
+
+    
 }

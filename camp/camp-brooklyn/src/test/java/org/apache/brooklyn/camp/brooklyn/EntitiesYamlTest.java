@@ -99,7 +99,7 @@ public class EntitiesYamlTest extends AbstractYamlTest {
         Entity entity = app.getChildren().iterator().next();
         Assert.assertTrue(entity instanceof TestEntity, "Expected TestEntity, found " + entity.getClass());
         
-        return (TestEntity)entity;
+        return entity;
     }
     
     @Test
@@ -277,7 +277,7 @@ public class EntitiesYamlTest extends AbstractYamlTest {
         TestEntity testEntity = (TestEntity) entity;
         List<String> thingList = (List<String>)testEntity.getConfig(TestEntity.CONF_LIST_THING);
         Set<String> thingSet = (Set<String>)testEntity.getConfig(TestEntity.CONF_SET_THING);
-        Map<String, String> thingMap = (Map<String, String>)testEntity.getConfig(TestEntity.CONF_MAP_THING);
+        Map<String, String> thingMap = testEntity.getConfig(TestEntity.CONF_MAP_THING);
         Assert.assertEquals(thingList, Lists.newArrayList());
         Assert.assertEquals(thingSet, ImmutableSet.of());
         Assert.assertEquals(thingMap, ImmutableMap.of());
@@ -347,6 +347,7 @@ public class EntitiesYamlTest extends AbstractYamlTest {
         Assert.assertNotNull(entities[0], "Expected app to contain child named 'testentity'");
         Assert.assertNotNull(entities[1], "Expected app to contain child named 'second entity'");
         Object object = ((EntityInternal)app).getExecutionContext().submit(MutableMap.of(), new Callable<Object>() {
+            @Override
             public Object call() {
                 return entities[1].getConfig(TestEntity.CONF_OBJECT);
             }}).get();
@@ -423,7 +424,7 @@ public class EntitiesYamlTest extends AbstractYamlTest {
         Entity root1 = Tasks.resolving(new DslComponent(Scope.ROOT, "xxx").newTask(), Entity.class).context(app).embedResolutionInTask(true).get();
         Assert.assertEquals(root1, app);
         
-        Entity c1 = Tasks.resolving(new DslComponent("c1").newTask(), Entity.class).context(app).embedResolutionInTask(true).get();
+        Entity c1 = Tasks.resolving(new DslComponent(Scope.GLOBAL, "c1").newTask(), Entity.class).context(app).embedResolutionInTask(true).get();
         Assert.assertEquals(c1, Iterables.getOnlyElement(Entities.descendantsAndSelf(app, EntityPredicates.displayNameEqualTo("child 1"))));
         
         Entity e1 = Tasks.resolving(new DslComponent(Scope.PARENT, "xxx").newTask(), Entity.class).context(c1).embedResolutionInTask(true).get();

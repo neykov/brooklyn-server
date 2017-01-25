@@ -29,8 +29,10 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.brooklyn.core.config.Sanitizer;
 import org.apache.brooklyn.core.location.cloud.CloudLocationConfig;
+import org.apache.brooklyn.core.mgmt.persist.DeserializingJcloudsRenamesProvider;
 import org.apache.brooklyn.util.collections.MutableMap;
 import org.apache.brooklyn.util.core.config.ConfigBag;
+import org.apache.brooklyn.util.text.Strings;
 import org.apache.brooklyn.util.time.Duration;
 import org.jclouds.Constants;
 import org.jclouds.ContextBuilder;
@@ -38,6 +40,7 @@ import org.jclouds.compute.ComputeService;
 import org.jclouds.compute.ComputeServiceContext;
 import org.jclouds.ec2.reference.EC2Constants;
 import org.jclouds.encryption.bouncycastle.config.BouncyCastleCryptoModule;
+import org.jclouds.location.reference.LocationConstants;
 import org.jclouds.logging.slf4j.config.SLF4JLoggingModule;
 import org.jclouds.sshj.config.SshjSshClientModule;
 import org.slf4j.Logger;
@@ -63,7 +66,9 @@ public class ComputeServiceRegistryImpl implements ComputeServiceRegistry, Jclou
 
     @Override
     public ComputeService findComputeService(ConfigBag conf, boolean allowReuse) {
-        String provider = checkNotNull(conf.get(CLOUD_PROVIDER), "provider must not be null");
+        String rawProvider = checkNotNull(conf.get(CLOUD_PROVIDER), "provider must not be null");
+        String provider = DeserializingJcloudsRenamesProvider.INSTANCE.applyJcloudsRenames(rawProvider);
+
         String identity = checkNotNull(conf.get(CloudLocationConfig.ACCESS_IDENTITY), "identity must not be null");
         String credential = checkNotNull(conf.get(CloudLocationConfig.ACCESS_CREDENTIAL), "credential must not be null");
         
@@ -72,6 +77,20 @@ public class ComputeServiceRegistryImpl implements ComputeServiceRegistry, Jclou
         properties.setProperty(Constants.PROPERTY_RELAX_HOSTNAME, Boolean.toString(true));
         properties.setProperty("jclouds.ssh.max-retries", conf.getStringKey("jclouds.ssh.max-retries") != null ? 
                 conf.getStringKey("jclouds.ssh.max-retries").toString() : "50");
+
+        if (conf.get(OAUTH_ENDPOINT) != null) properties.setProperty(OAUTH_ENDPOINT.getName(),conf.get(OAUTH_ENDPOINT));
+
+        // See https://issues.apache.org/jira/browse/BROOKLYN-394
+        // For retries, the backoff times are:
+        //   Math.min(2^failureCount * retryDelayStart, retryDelayStart * 10) + random(10%)
+        // Therefore the backoff times will be: 500ms, 1s, 2s, 4s, 5s, 5s.
+        // The defaults (if not overridden here) are 50ms and 5 retires. This gives backoff
+        // times of 50ms, 100ms, 200ms, 400ms, 500ms (so a total backoff time of 1.25s), 
+        // which is not long when you're being rate-limited and there are multiple thread all 
+        // retrying their API calls.
+        properties.setProperty(Constants.PROPERTY_RETRY_DELAY_START, "500");
+        properties.setProperty(Constants.PROPERTY_MAX_RETRIES, "6");
+
         // Enable aws-ec2 lazy image fetching, if given a specific imageId; otherwise customize for specific owners; or all as a last resort
         // See https://issues.apache.org/jira/browse/WHIRR-416
         if ("aws-ec2".equals(provider)) {
@@ -98,17 +117,39 @@ public class ComputeServiceRegistryImpl implements ComputeServiceRegistry, Jclou
                  * Filter.3.Name=image-type&Filter.3.Value.1=machine&
                  */
             }
-            
+
+            // See https://issues.apache.org/jira/browse/BROOKLYN-399
+            String region = conf.get(CLOUD_REGION_ID);
+            if (Strings.isNonBlank(region)) {
+                /*
+                 * Drop availability zone suffixes. Without this deployments to regions like us-east-1b fail
+                 * because jclouds throws an IllegalStateException complaining that: location id us-east-1b
+                 * not found in: [{scope=PROVIDER, id=aws-ec2, description=https://ec2.us-east-1.amazonaws.com,
+                 * iso3166Codes=[US-VA, US-CA, US-OR, BR-SP, IE, DE-HE, SG, AU-NSW, JP-13]}]. The exception is
+                 * thrown by org.jclouds.compute.domain.internal.TemplateBuilderImpl#locationId(String).
+                 */
+                if (Character.isLetter(region.charAt(region.length() - 1))) {
+                    region = region.substring(0, region.length() - 1);
+                }
+                properties.setProperty(LocationConstants.PROPERTY_REGIONS, region);
+            }
+
             // occasionally can get com.google.common.util.concurrent.UncheckedExecutionException: java.lang.RuntimeException: 
             //     security group eu-central-1/jclouds#brooklyn-bxza-alex-eu-central-shoul-u2jy-nginx-ielm is not available after creating
             // the default timeout was 500ms so let's raise it in case that helps
             properties.setProperty(EC2Constants.PROPERTY_EC2_TIMEOUT_SECURITYGROUP_PRESENT, ""+Duration.seconds(30).toMilliseconds());
         }
+        else if ("azurecompute-arm".equals(provider)) {
+            String region = conf.get(CLOUD_REGION_ID);
+            if (Strings.isNonBlank(region)) {
+                properties.setProperty(LocationConstants.PROPERTY_REGIONS, region);
+            }
+        }
 
-        // FIXME Deprecated mechanism, should have a ConfigKey for overrides
+        // Add extra jclouds-specific configuration
         Map<String, Object> extra = Maps.filterKeys(conf.getAllConfig(), Predicates.containsPattern("^jclouds\\."));
         if (extra.size() > 0) {
-            LOG.warn("Jclouds using deprecated property overrides: "+Sanitizer.sanitize(extra));
+            LOG.debug("Configuring custom jclouds property overrides for {}: {}", provider, Sanitizer.sanitize(extra));
         }
         properties.putAll(Maps.filterValues(extra, Predicates.notNull()));
 

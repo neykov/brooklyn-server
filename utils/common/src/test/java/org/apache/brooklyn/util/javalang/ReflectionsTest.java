@@ -101,7 +101,7 @@ public class ReflectionsTest {
         public CI1(String x, int y0, int y1, int ...yy) {
             constructorArgs = Lists.newArrayList();
             constructorArgs.addAll(ImmutableList.of(x, y0, y1));
-            for (int yi: yy) constructorArgs.add((Integer)yi);
+            for (int yi: yy) constructorArgs.add(yi);
         }
         public static String m1(String x, int y) {
             return x+y;
@@ -126,6 +126,24 @@ public class ReflectionsTest {
         
         Assert.assertEquals(Reflections.invokeMethodFromArgs(CI1.class, "m1", Arrays.<Object>asList("hello", 3)).get(), "hello3");
         Assert.assertEquals(Reflections.invokeMethodFromArgs(CI1.class, "m1", Arrays.<Object>asList("hello", 3, 4, 5)).get(), "hello12");
+    }
+    
+    @Test
+    public void testMethodInvocation() throws Exception {
+        Method m1Short = CI1.class.getMethod("m1", String.class, int.class);
+        Method m1Long = CI1.class.getMethod("m1", String.class, int.class, int.class, int[].class);
+        
+        Assert.assertEquals(Reflections.invokeMethodFromArgs(CI1.class, m1Short, Arrays.<Object>asList("hello", 3)), "hello3");
+        Assert.assertEquals(Reflections.invokeMethodFromArgs(CI1.class, m1Long, Arrays.<Object>asList("hello", 3, 4, 5)), "hello12");
+    }
+    
+    @Test
+    public void testGetMethod() throws Exception {
+        Method m1Short = CI1.class.getMethod("m1", String.class, int.class);
+        Method m1Long = CI1.class.getMethod("m1", String.class, int.class, int.class, int[].class);
+        
+        Assert.assertEquals(Reflections.getMethodFromArgs(CI1.class, "m1", Arrays.<Object>asList("hello", 3)).get(), m1Short);
+        Assert.assertEquals(Reflections.getMethodFromArgs(CI1.class, "m1", Arrays.<Object>asList("hello", 3, 4, 5)).get(), m1Long);
     }
     
     @Test

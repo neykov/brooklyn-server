@@ -46,9 +46,10 @@ public class BasicConfigurableEntityFactory<T extends Entity> extends AbstractCo
     public BasicConfigurableEntityFactory(Map flags, Class<? extends T> clazz) {
         super(flags);
         this.clazz = checkNotNull(clazz, "clazz");
-        this.clazzName = DeserializingClassRenamesProvider.findMappedName(clazz.getName());
+        this.clazzName = DeserializingClassRenamesProvider.INSTANCE.findMappedName(clazz.getName());
     }
 
+    @Override
     public T newEntity2(Map flags, Entity parent) {
         try {
             Constructor<? extends T> constructor = clazz.getConstructor(Map.class, Entity.class);

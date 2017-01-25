@@ -40,6 +40,7 @@ import org.apache.brooklyn.core.entity.EntityInternal;
 import org.apache.brooklyn.core.mgmt.BrooklynTaskTags;
 import org.apache.brooklyn.core.mgmt.BrooklynTaskTags.WrappedEntity;
 import org.apache.brooklyn.core.mgmt.entitlement.Entitlements;
+import org.apache.brooklyn.util.collections.MutableMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -93,7 +94,8 @@ public class BasicExecutionContext extends AbstractExecutionContext {
     }
     
     /** returns tasks started by this context (or tasks which have all the tags on this object) */
-    public Set<Task<?>> getTasks() { return executionManager.getTasksWithAllTags((Set<?>)tags); }
+    @Override
+    public Set<Task<?>> getTasks() { return executionManager.getTasksWithAllTags(tags); }
      
     @SuppressWarnings({ "unchecked", "rawtypes" })
     @Override
@@ -101,16 +103,23 @@ public class BasicExecutionContext extends AbstractExecutionContext {
         if (task instanceof TaskAdaptable<?> && !(task instanceof Task<?>)) 
             return submitInternal(propertiesQ, ((TaskAdaptable<?>)task).asTask());
         
-        Map properties = propertiesQ;
-        if (properties.get("tags")==null) properties.put("tags", new ArrayList()); 
-        Collection taskTags = (Collection)properties.get("tags");
+        Map properties = MutableMap.copyOf(propertiesQ);
+        Collection taskTags;
+        if (properties.get("tags")==null) {
+            taskTags = new ArrayList();
+        } else {
+            taskTags = new ArrayList((Collection)properties.get("tags"));
+        }
+        properties.put("tags", taskTags);
         
         // FIXME some of this is brooklyn-specific logic, should be moved to a BrooklynExecContext subclass;
         // the issue is that we want to ensure that cross-entity calls switch execution contexts;
         // previously it was all very messy how that was handled (and it didn't really handle it in many cases)
         if (task instanceof Task<?>) taskTags.addAll( ((Task<?>)task).getTags() ); 
         Entity target = BrooklynTaskTags.getWrappedEntityOfType(taskTags, BrooklynTaskTags.TARGET_ENTITY);
-        
+
+        checkUserSuppliedContext(task, taskTags);
+
         if (target!=null && !tags.contains(BrooklynTaskTags.tagForContextEntity(target))) {
             // task is switching execution context boundaries
             /* 
@@ -134,6 +143,7 @@ public class BasicExecutionContext extends AbstractExecutionContext {
                     // (this matters when we are navigating in the GUI; without it we lose the reference to the child 
                     // when browsing in the context of the parent)
                     return submit(Tasks.<T>builder().displayName("Cross-context execution: "+t.getDescription()).dynamic(true).body(new Callable<T>() {
+                        @Override
                         public T call() { 
                             return DynamicTasks.get(t); 
                         }
@@ -146,6 +156,7 @@ public class BasicExecutionContext extends AbstractExecutionContext {
                 // as above, but here we are definitely not a child (what we are submitting isn't even a task)
                 // (will only come here if properties defines tags including a target entity, which probably never happens) 
                 submit(Tasks.<T>builder().displayName("Cross-context execution").dynamic(true).body(new Callable<T>() {
+                    @Override
                     public T call() {
                         if (task instanceof Callable) {
                             return DynamicTasks.queue( Tasks.<T>builder().dynamic(false).body((Callable<T>)task).build() ).getUnchecked();
@@ -158,7 +169,7 @@ public class BasicExecutionContext extends AbstractExecutionContext {
                 }).build());
             }
         }
-        
+
         EntitlementContext entitlementContext = BrooklynTaskTags.getEntitlement(taskTags);
         if (entitlementContext==null)
         entitlementContext = Entitlements.getEntitlementContext();
@@ -167,7 +178,7 @@ public class BasicExecutionContext extends AbstractExecutionContext {
         }
 
         taskTags.addAll(tags);
-        
+
         if (Tasks.current()!=null && BrooklynTaskTags.isTransient(Tasks.current()) 
                 && !taskTags.contains(BrooklynTaskTags.NON_TRANSIENT_TASK_TAG) && !taskTags.contains(BrooklynTaskTags.TRANSIENT_TASK_TAG)) {
             // tag as transient if submitter is transient, unless explicitly tagged as non-transient
@@ -176,6 +187,7 @@ public class BasicExecutionContext extends AbstractExecutionContext {
         
         final Object startCallback = properties.get("newTaskStartCallback");
         properties.put("newTaskStartCallback", new Function<Task<?>,Void>() {
+            @Override
             public Void apply(Task<?> it) {
                 registerPerThreadExecutionContext();
                 if (startCallback!=null) BasicExecutionManager.invokeCallback(startCallback, it);
@@ -184,6 +196,7 @@ public class BasicExecutionContext extends AbstractExecutionContext {
         
         final Object endCallback = properties.get("newTaskEndCallback");
         properties.put("newTaskEndCallback", new Function<Task<?>,Void>() {
+            @Override
             public Void apply(Task<?> it) {
                 try {
                     if (endCallback!=null) BasicExecutionManager.invokeCallback(endCallback, it);
@@ -203,10 +216,45 @@ public class BasicExecutionContext extends AbstractExecutionContext {
             throw new IllegalArgumentException("Unhandled task type: task="+task+"; type="+(task!=null ? task.getClass() : "null"));
         }
     }
-    
+
     private void registerPerThreadExecutionContext() { perThreadExecutionContext.set(this); }
 
     private void clearPerThreadExecutionContext() { perThreadExecutionContext.remove(); }
+
+    private void checkUserSuppliedContext(Object task, Collection<Object> taskTags) {
+        Entity taskContext = BrooklynTaskTags.getWrappedEntityOfType(taskTags, BrooklynTaskTags.CONTEXT_ENTITY);
+        Entity defaultContext = BrooklynTaskTags.getWrappedEntityOfType(tags, BrooklynTaskTags.CONTEXT_ENTITY);
+        if (taskContext != null) {
+            if (log.isWarnEnabled()) {
+                String msg = "Deprecated since 0.10.0. Task " + task + " is submitted for execution but has context " +
+                        "entity (" + taskContext + ") tag set by the caller. ";
+                if (taskContext != defaultContext) {
+                    msg += "The context entity of the execution context (" + this + ") the task is submitted on is " +
+                            defaultContext + " which is different. This will cause any of them to be used at random at " +
+                            "runtime. ";
+                    if (task instanceof BasicTask) {
+                        msg += "Fixing the context entity to the latter. ";
+                    }
+                }
+                msg += "Setting the context entity by the caller is not allowed. See the documentation on " +
+                        "BrooklynTaskTags.tagForContextEntity(Entity) method for more details. Future Apache Brooklyn " +
+                        "releases will throw an exception instead of logging a warning.";
+
+                /**
+                 * @deprecated since 0.10.0
+                 */
+                // Should we rate limit?
+                log.warn(msg);
+            }
+
+            WrappedEntity contextTag = BrooklynTaskTags.tagForContextEntity(taskContext);
+            while(taskTags.remove(contextTag)) {};
+            if (task instanceof BasicTask) {
+                Set<?> mutableTags = BasicTask.class.cast(task).getMutableTags();
+                mutableTags.remove(contextTag);
+            }
+        }
+    }
 
     @Override
     public boolean isShutdown() {

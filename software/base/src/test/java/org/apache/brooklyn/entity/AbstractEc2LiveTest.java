@@ -96,10 +96,20 @@ public abstract class AbstractEc2LiveTest extends BrooklynAppLiveTestSupport {
         runTest(ImmutableMap.of("imageId", "us-east-1/ami-5e12dc36", "loginUser", "admin", "hardwareId", SMALL_HARDWARE_ID));
     }
 
-    @Test(groups = {"Live"})
+    /**
+     * @deprecated since 0.10.0 use {@link #test_Debian_7()} instead.
+     */
+    @Test(groups = {"Live"}, enabled=false)
+    @Deprecated
     public void test_Debian_7_2() throws Exception {
-        // release codename "wheezy"
-        runTest(ImmutableMap.of("imageId", "us-east-1/ami-5586a43c", "loginUser", "admin", "hardwareId", SMALL_HARDWARE_ID));
+        test_Debian_7();
+    }
+
+    @Test(groups = {"Live"})
+    public void test_Debian_7() throws Exception {
+        // See images at https://wiki.debian.org/Cloud/AmazonEC2Image/Wheezy.
+        // release codename "wheezy", version 7.8.aws.1.
+        runTest(ImmutableMap.of("imageId", "us-east-1/ami-baeda9d2", "loginUser", "admin", "hardwareId", SMALL_HARDWARE_ID));
     }
 
     @Test(groups = {"Live"})
@@ -167,6 +177,7 @@ public abstract class AbstractEc2LiveTest extends BrooklynAppLiveTestSupport {
     
     protected void assertViaSshLocalPortListeningEventually(final SoftwareProcess server, final int port) {
         Asserts.succeedsEventually(ImmutableMap.of("timeout", Duration.FIVE_MINUTES), new Runnable() {
+            @Override
             public void run() {
                 assertExecSsh(server, ImmutableList.of("netstat -antp", "netstat -antp | grep LISTEN | grep "+port));
             }});
@@ -174,6 +185,7 @@ public abstract class AbstractEc2LiveTest extends BrooklynAppLiveTestSupport {
     
     protected void assertViaSshLocalUrlListeningEventually(final SoftwareProcess server, final String url) {
         Asserts.succeedsEventually(ImmutableMap.of("timeout", Duration.FIVE_MINUTES), new Runnable() {
+            @Override
             public void run() {
                 assertExecSsh(server, ImmutableList.of(BashCommands.installPackage("curl"), "netstat -antp", "curl -k --retry 3 "+url));
             }});

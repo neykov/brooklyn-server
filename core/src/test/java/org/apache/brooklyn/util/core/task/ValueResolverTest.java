@@ -18,10 +18,18 @@
  */
 package org.apache.brooklyn.util.core.task;
 
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.fail;
+
+import java.util.Arrays;
 import java.util.concurrent.Callable;
 
 import org.apache.brooklyn.api.mgmt.Task;
+import org.apache.brooklyn.core.mgmt.BrooklynTaskTags;
 import org.apache.brooklyn.core.test.BrooklynAppUnitTestSupport;
+import org.apache.brooklyn.test.Asserts;
 import org.apache.brooklyn.util.guava.Maybe;
 import org.apache.brooklyn.util.time.Duration;
 import org.apache.brooklyn.util.time.Time;
@@ -41,24 +49,6 @@ public class ValueResolverTest extends BrooklynAppUnitTestSupport {
         super.setUp();
     }
     
-    public static final Task<String> newSleepTask(final Duration timeout, final String result) {
-        return Tasks.<String>builder().body(new Callable<String>() { 
-            public String call() { 
-                Time.sleep(timeout); 
-                return result; 
-            }}
-        ).build();
-    }
-    
-    public static final Task<String> newThrowTask(final Duration timeout) {
-        return Tasks.<String>builder().body(new Callable<String>() { 
-            public String call() {
-                Time.sleep(timeout); 
-                throw new IllegalStateException("intended, during tests");
-            }}
-        ).build();
-    }
-    
     public void testTimeoutZero() {
         Maybe<String> result = Tasks.resolving(newSleepTask(Duration.TEN_SECONDS, "foo")).as(String.class).context(app).timeout(Duration.ZERO).getMaybe();
         Assert.assertFalse(result.isPresent());
@@ -69,46 +59,70 @@ public class ValueResolverTest extends BrooklynAppUnitTestSupport {
         Assert.assertEquals(result.get(), "foo");
     }
 
-    public void testNoExecutionContextOnCompleted() {
+    public void testCompletedTaskReturnsResultImmediately() {
         Task<String> t = newSleepTask(Duration.ZERO, "foo");
         app.getExecutionContext().submit(t).getUnchecked();
+        
+        // Below, we call ValueResolver.getMaybe() from this thread, which has no execution context.
+        // However, the task has already been submitted and we have waited for it to complete.
+        // Therefore the ValueResolver can simply check for task.isDone() and return its result immediately.
         Maybe<String> result = Tasks.resolving(t).as(String.class).timeout(Duration.ZERO).getMaybe();
         Assert.assertEquals(result.get(), "foo");
     }
 
-    public static Throwable assertThrowsOnMaybe(ValueResolver<?> result) {
-        try {
-            result = result.clone();
-            result.getMaybe();
-            Assert.fail("should have thrown");
-            return null;
-        } catch (Exception e) { return e; }
+    public void testUnsubmittedTaskWhenNoExecutionContextFails() {
+        Task<String> t = newSleepTask(Duration.ZERO, "foo");
+        
+        // Below, we call ValueResolver.getMaybe() with no execution context. Therefore it will not execute the task.
+        Maybe<String> result = Tasks.resolving(t).as(String.class).timeout(Duration.ZERO).getMaybe();
+        
+        Assert.assertTrue(result.isAbsent(), "result="+result);
+        Exception exception = Maybe.getException(result);
+        Assert.assertTrue(exception.toString().contains("no execution context available"), "exception="+exception);
     }
-    public static Throwable assertThrowsOnGet(ValueResolver<?> result) {
-        result = result.clone();
-        try {
-            result.get();
-            Assert.fail("should have thrown");
-            return null;
-        } catch (Exception e) { return e; }
+
+    public void testUnsubmittedTaskWithExecutionContextExecutesAndReturns() {
+        final Task<String> t = newSleepTask(Duration.ZERO, "foo");
+        
+        // Below, we call ValueResolver.getMaybe() in app's execution context. Therefore it will execute the task.
+        Maybe<String>  result = app.getExecutionContext()
+                .submit(new Callable<Maybe<String> >() {
+                    @Override
+                    public Maybe<String>  call() throws Exception {
+                        return Tasks.resolving(t).as(String.class).timeout(Asserts.DEFAULT_LONG_TIMEOUT).getMaybe();
+                    }})
+                .getUnchecked();
+        
+        Assert.assertEquals(result.get(), "foo");
     }
-    public static <T> Maybe<T> assertMaybeIsAbsent(ValueResolver<T> result) {
-        result = result.clone();
-        Maybe<T> maybe = result.getMaybe();
-        Assert.assertFalse(maybe.isPresent());
-        return maybe;
+
+    public void testUnsubmittedTaskWithExecutionContextExecutesAndTimesOut() {
+        final Task<String> t = newSleepTask(Duration.ONE_MINUTE, "foo");
+        
+        // Below, we call ValueResolver.getMaybe() in app's execution context. Therefore it will execute the task.
+        // However, it will quickly timeout as the task will not have completed.
+        Maybe<String>  result = app.getExecutionContext()
+                .submit(new Callable<Maybe<String> >() {
+                    @Override
+                    public Maybe<String>  call() throws Exception {
+                        return Tasks.resolving(t).as(String.class).timeout(Duration.ZERO).getMaybe();
+                    }})
+                .getUnchecked();
+        
+        Assert.assertTrue(result.isAbsent(), "result="+result);
+        Exception exception = Maybe.getException(result);
+        Assert.assertTrue(exception.toString().contains("not completed when immediate completion requested"), "exception="+exception);
     }
-    
+
     public void testSwallowError() {
         ValueResolver<String> result = Tasks.resolving(newThrowTask(Duration.ZERO)).as(String.class).context(app).swallowExceptions();
         assertMaybeIsAbsent(result);
         assertThrowsOnGet(result);
     }
 
-
     public void testDontSwallowError() {
         ValueResolver<String> result = Tasks.resolving(newThrowTask(Duration.ZERO)).as(String.class).context(app);
-        assertThrowsOnMaybe(result);
+        assertThrowsOnGetMaybe(result);
         assertThrowsOnGet(result);
     }
 
@@ -124,4 +138,225 @@ public class ValueResolverTest extends BrooklynAppUnitTestSupport {
         Assert.assertEquals(result.get(), "foo");
     }
 
+    public void testGetImmediately() {
+        MyImmediateAndDeferredSupplier supplier = new MyImmediateAndDeferredSupplier();
+        CallInfo callInfo = Tasks.resolving(supplier).as(CallInfo.class).context(app).immediately(true).get();
+        assertNull(callInfo.task);
+        assertContainsCallingMethod(callInfo.stackTrace, "testGetImmediately");
+    }
+    
+    public void testImmediateSupplierWithTimeoutUsesBlocking() {
+        MyImmediateAndDeferredSupplier supplier = new MyImmediateAndDeferredSupplier();
+        CallInfo callInfo = Tasks.resolving(supplier).as(CallInfo.class).context(app).timeout(Asserts.DEFAULT_LONG_TIMEOUT).get();
+        assertNotNull(callInfo.task);
+        assertNotContainsCallingMethod(callInfo.stackTrace, "testImmediateSupplierWithTimeoutUsesBlocking");
+    }
+    
+    public void testGetImmediatelyInTask() throws Exception {
+        final MyImmediateAndDeferredSupplier supplier = new MyImmediateAndDeferredSupplier();
+        Task<CallInfo> task = app.getExecutionContext().submit(new Callable<CallInfo>() {
+            @Override
+            public CallInfo call() {
+                return myUniquelyNamedMethod();
+            }
+            private CallInfo myUniquelyNamedMethod() {
+                return Tasks.resolving(supplier).as(CallInfo.class).immediately(true).get();
+            }
+        });
+        CallInfo callInfo = task.get();
+        assertEquals(callInfo.task, task);
+        assertContainsCallingMethod(callInfo.stackTrace, "myUniquelyNamedMethod");
+    }
+    
+    public void testGetImmediatelyFallsBackToDeferredCallInTask() throws Exception {
+        final MyImmediateAndDeferredSupplier supplier = new MyImmediateAndDeferredSupplier(true);
+        CallInfo callInfo = Tasks.resolving(supplier).as(CallInfo.class).context(app).immediately(true).get();
+        assertNotNull(callInfo.task);
+        assertEquals(BrooklynTaskTags.getContextEntity(callInfo.task), app);
+        assertNotContainsCallingMethod(callInfo.stackTrace, "testGetImmediatelyFallsBackToDeferredCallInTask");
+    }
+
+    public void testNonRecursiveBlockingFailsOnNonObjectType() throws Exception {
+        try {
+            Tasks.resolving(new WrappingImmediateAndDeferredSupplier(new FailingImmediateAndDeferredSupplier()))
+                .as(FailingImmediateAndDeferredSupplier.class)
+                .context(app)
+                .immediately(false)
+                .recursive(false)
+                .get();
+            Asserts.shouldHaveFailedPreviously("recursive(true) accepts only as(Object.class)");
+        } catch (IllegalStateException e) {
+            Asserts.expectedFailureContains(e, "must be Object");
+        }
+    }
+
+    public void testNonRecursiveBlocking() throws Exception {
+        Object result = Tasks.resolving(new WrappingImmediateAndDeferredSupplier(new FailingImmediateAndDeferredSupplier()))
+            .as(Object.class)
+            .context(app)
+            .immediately(false)
+            .recursive(false)
+            .get();
+        assertEquals(result.getClass(), FailingImmediateAndDeferredSupplier.class);
+    }
+
+    public void testNonRecursiveImmediateFailsOnNonObjectType() throws Exception {
+        try {
+            Tasks.resolving(new WrappingImmediateAndDeferredSupplier(new FailingImmediateAndDeferredSupplier()))
+                .as(FailingImmediateAndDeferredSupplier.class)
+                .context(app)
+                .immediately(true)
+                .recursive(false)
+                .get();
+            Asserts.shouldHaveFailedPreviously("recursive(true) accepts only as(Object.class)");
+        } catch (IllegalStateException e) {
+            Asserts.expectedFailureContains(e, "must be Object");
+        }
+    }
+
+    public void testNonRecursiveImmediately() throws Exception {
+        Object result = Tasks.resolving(new WrappingImmediateAndDeferredSupplier(new FailingImmediateAndDeferredSupplier()))
+                .as(Object.class)
+                .context(app)
+                .immediately(true)
+                .recursive(false)
+                .get();
+            assertEquals(result.getClass(), FailingImmediateAndDeferredSupplier.class);
+    }
+
+    private static class MyImmediateAndDeferredSupplier implements ImmediateSupplier<CallInfo>, DeferredSupplier<CallInfo> {
+        private final boolean failImmediately;
+        
+        public MyImmediateAndDeferredSupplier() {
+            this(false);
+        }
+        
+        public MyImmediateAndDeferredSupplier(boolean simulateImmediateUnsupported) {
+            this.failImmediately = simulateImmediateUnsupported;
+        }
+        
+        @Override
+        public Maybe<CallInfo> getImmediately() {
+            if (failImmediately) {
+                throw new ImmediateSupplier.ImmediateUnsupportedException("Simulate immediate unsupported");
+            } else {
+                return Maybe.of(CallInfo.newInstance());
+            }
+        }
+        @Override
+        public CallInfo get() {
+            return CallInfo.newInstance();
+        }
+    }
+    
+    static class WrappingImmediateAndDeferredSupplier implements ImmediateSupplier<Object>, DeferredSupplier<Object> {
+        private Object value;
+
+        public WrappingImmediateAndDeferredSupplier(Object value) {
+            this.value = value;
+        }
+
+        @Override
+        public Object get() {
+            return getImmediately().get();
+        }
+
+        @Override
+        public Maybe<Object> getImmediately() {
+            return Maybe.of(value);
+        }
+        
+    }
+
+    static class FailingImmediateAndDeferredSupplier implements ImmediateSupplier<Object>, DeferredSupplier<Object> {
+
+        @Override
+        public Object get() {
+            throw new IllegalStateException("Not to be called");
+        }
+
+        @Override
+        public Maybe<Object> getImmediately() {
+            throw new IllegalStateException("Not to be called");
+        }
+        
+    }
+
+    private static class CallInfo {
+        final StackTraceElement[] stackTrace;
+        final Task<?> task;
+
+        public static CallInfo newInstance() {
+            Exception e = new Exception("for stacktrace");
+            e.fillInStackTrace();
+            return new CallInfo(e.getStackTrace(), Tasks.current());
+        }
+        
+        CallInfo(StackTraceElement[] stackTrace, Task<?> task) {
+            this.stackTrace = stackTrace;
+            this.task = task;
+        }
+    }
+    
+    public static final Task<String> newSleepTask(final Duration timeout, final String result) {
+        return Tasks.<String>builder().body(new Callable<String>() { 
+            @Override
+            public String call() { 
+                Time.sleep(timeout); 
+                return result; 
+            }}
+        ).build();
+    }
+    
+    public static final Task<String> newThrowTask(final Duration timeout) {
+        return Tasks.<String>builder().body(new Callable<String>() { 
+            @Override
+            public String call() {
+                Time.sleep(timeout); 
+                throw new IllegalStateException("intended, during tests");
+            }}
+        ).build();
+    }
+    
+    public static Exception assertThrowsOnGetMaybe(ValueResolver<?> result) {
+        try {
+            result = result.clone();
+            result.getMaybe();
+            Assert.fail("should have thrown");
+            return null;
+        } catch (Exception e) { return e; }
+    }
+    
+    public static Exception assertThrowsOnGet(ValueResolver<?> result) {
+        result = result.clone();
+        try {
+            result.get();
+            Assert.fail("should have thrown");
+            return null;
+        } catch (Exception e) { return e; }
+    }
+    
+    public static <T> Maybe<T> assertMaybeIsAbsent(ValueResolver<T> result) {
+        result = result.clone();
+        Maybe<T> maybe = result.getMaybe();
+        Assert.assertFalse(maybe.isPresent());
+        return maybe;
+    }
+    
+    private void assertContainsCallingMethod(StackTraceElement[] stackTrace, String expectedMethod) {
+        for (StackTraceElement element : stackTrace) {
+            if (expectedMethod.equals(element.getMethodName())) {
+                return;
+            }
+        }
+        fail("Method "+expectedMethod+" not found: "+Arrays.toString(stackTrace));
+    }
+    
+    private void assertNotContainsCallingMethod(StackTraceElement[] stackTrace, String notExpectedMethod) {
+        for (StackTraceElement element : stackTrace) {
+            if (notExpectedMethod.equals(element.getMethodName())) {
+                fail("Method "+notExpectedMethod+" not expected: "+Arrays.toString(stackTrace));
+            }
+        }
+    }
 }

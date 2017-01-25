@@ -20,16 +20,22 @@ package org.apache.brooklyn.util.core.config;
 
 import java.util.Map;
 
+import org.apache.brooklyn.api.entity.Entity;
 import org.apache.brooklyn.api.mgmt.ExecutionContext;
 import org.apache.brooklyn.api.mgmt.ManagementContext;
 import org.apache.brooklyn.config.ConfigKey;
+import org.apache.brooklyn.core.entity.EntityInternal;
+import org.apache.brooklyn.core.mgmt.BrooklynTaskTags;
 import org.apache.brooklyn.util.core.task.DeferredSupplier;
 import org.apache.brooklyn.util.core.task.Tasks;
 import org.apache.brooklyn.util.exceptions.Exceptions;
 import org.apache.brooklyn.util.guava.Maybe;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.annotations.Beta;
 import com.google.common.base.Function;
+import com.google.common.base.MoreObjects;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 
@@ -37,7 +43,10 @@ import com.google.common.collect.Sets;
  * As for {@link ConfigBag}, but resolves values that are of type {@link DeferredSupplier}.
  */
 @Beta
+// TODO Check if this is still needed after the changes in https://github.com/apache/brooklyn-server/pull/340.
+//      The PR now provides the execution context and resolves. Still there are cases which we need the transformer here, why?
 public class ResolvingConfigBag extends ConfigBag {
+    private static final Logger log = LoggerFactory.getLogger(ResolvingConfigBag.class);
 
     // Relies on various getters all delegating to a few common methods.
 
@@ -64,13 +73,23 @@ public class ResolvingConfigBag extends ConfigBag {
                 @Override public Object apply(Object input) {
                     if (input instanceof DeferredSupplier<?>) {
                         try {
-                            ExecutionContext exec = mgmt.getServerExecutionContext();
-                            return Tasks.resolveValue(input, Object.class, exec);
+                            return Tasks.resolveValue(input, Object.class, getExecutionContext());
                         } catch (Exception e) {
                             throw Exceptions.propagate(e);
                         }
                     }
                     return input;
+                }
+
+                protected ExecutionContext getExecutionContext() {
+                    // TODO Transformer is cached so on next getConfig call the context could be different - something to watch out for.
+                    Entity contextEntity = BrooklynTaskTags.getTargetOrContextEntity(Tasks.current());
+                    if (contextEntity instanceof EntityInternal) {
+                        return ((EntityInternal)contextEntity).getExecutionContext();
+                    } else {
+                        log.debug("No entity context found, will use global execution context. Could lead to NPE on DSL resolving in location config.");
+                        return mgmt.getServerExecutionContext();
+                    }
                 }
             };
         }
@@ -109,6 +128,7 @@ public class ResolvingConfigBag extends ConfigBag {
         return super.getUnusedConfig();
     }
 
+    @Override
     @SuppressWarnings("unchecked")
     protected <T> T get(ConfigKey<T> key, boolean markUsed) {
         return (T) getTransformer().apply(super.get(key, markUsed));
@@ -137,6 +157,7 @@ public class ResolvingConfigBag extends ConfigBag {
         throw new UnsupportedOperationException();
     }
 
+    @Override
     protected synchronized Maybe<Object> getStringKeyMaybe(String key, boolean markUsed) {
         Maybe<Object> result = super.getStringKeyMaybe(key, markUsed);
         return (result.isPresent()) ? Maybe.of(getTransformer().apply(result.get())) : result;
@@ -150,5 +171,12 @@ public class ResolvingConfigBag extends ConfigBag {
     @Override
     public Map<String, Object> getAllConfigRaw() {
         return getAllConfigMutable();
+    }
+
+    @Override
+    public String toString() {
+        return MoreObjects.toStringHelper(this)
+                .add("size", size())
+                .toString();
     }
 }

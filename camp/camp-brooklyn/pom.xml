@@ -21,7 +21,7 @@
     <modelVersion>4.0.0</modelVersion>
     <artifactId>brooklyn-camp</artifactId>
     <packaging>jar</packaging>
-    <name>Brooklyn CAMP REST API</name>
+    <name>Brooklyn CAMP</name>
     <description>
         Brooklyn support for the Oasis CAMP server
     </description>
@@ -29,7 +29,7 @@
     <parent>
         <groupId>org.apache.brooklyn</groupId>
         <artifactId>brooklyn-parent</artifactId>
-        <version>0.10.0-SNAPSHOT</version><!-- BROOKLYN_VERSION -->
+        <version>0.11.0-SNAPSHOT</version><!-- BROOKLYN_VERSION -->
         <relativePath>../../parent/pom.xml</relativePath>
     </parent>
 

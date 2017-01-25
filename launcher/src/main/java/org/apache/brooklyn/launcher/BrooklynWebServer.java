@@ -36,6 +36,8 @@ import java.util.Map;
 import javax.annotation.Nullable;
 import javax.security.auth.spi.LoginModule;
 
+import com.google.common.collect.ImmutableList;
+import org.apache.brooklyn.core.BrooklynFeatureEnablement;
 import org.apache.brooklyn.rest.NopSecurityHandler;
 import org.apache.brooklyn.api.location.PortRange;
 import org.apache.brooklyn.api.mgmt.ManagementContext;
@@ -50,7 +52,9 @@ import org.apache.brooklyn.launcher.config.CustomResourceLocator;
 import org.apache.brooklyn.location.localhost.LocalhostMachineProvisioningLocation;
 import org.apache.brooklyn.rest.BrooklynWebConfig;
 import org.apache.brooklyn.rest.RestApiSetup;
+import org.apache.brooklyn.rest.filter.CsrfTokenFilter;
 import org.apache.brooklyn.rest.filter.EntitlementContextFilter;
+import org.apache.brooklyn.rest.filter.CorsImplSupplierFilter;
 import org.apache.brooklyn.rest.filter.HaHotCheckResourceFilter;
 import org.apache.brooklyn.rest.filter.LoggingFilter;
 import org.apache.brooklyn.rest.filter.NoCacheFilter;
@@ -339,6 +343,7 @@ public class BrooklynWebServer {
     }
 
     /** @deprecated use setAttribute */
+    @Deprecated
     public BrooklynWebServer addAttribute(String field, Object value) {
         return setAttribute(field, value);
     }
@@ -454,13 +459,21 @@ public class BrooklynWebServer {
     }
 
     private WebAppContext deployRestApi(WebAppContext context) {
-        RestApiSetup.installRest(context,
+        ImmutableList.Builder<Object> providersListBuilder = ImmutableList.builder();
+        providersListBuilder.add(
                 new ManagementContextProvider(),
                 new ShutdownHandlerProvider(shutdownHandler),
                 new RequestTaggingRsFilter(),
                 new NoCacheFilter(),
                 new HaHotCheckResourceFilter(),
-                new EntitlementContextFilter());
+                new EntitlementContextFilter(),
+                new CsrfTokenFilter());
+        if (BrooklynFeatureEnablement.isEnabled(BrooklynFeatureEnablement.FEATURE_CORS_CXF_PROPERTY)) {
+            providersListBuilder.add(new CorsImplSupplierFilter(managementContext));
+        }
+
+        RestApiSetup.installRest(context,
+                providersListBuilder.build().toArray());
         RestApiSetup.installServletFilters(context,
                 RequestTaggingFilter.class,
                 LoggingFilter.class);

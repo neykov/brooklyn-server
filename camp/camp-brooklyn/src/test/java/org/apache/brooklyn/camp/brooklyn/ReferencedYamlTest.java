@@ -21,7 +21,6 @@ package org.apache.brooklyn.camp.brooklyn;
 import java.util.Collection;
 
 import org.apache.brooklyn.api.catalog.BrooklynCatalog;
-import org.apache.brooklyn.api.catalog.CatalogItem;
 import org.apache.brooklyn.api.entity.Entity;
 import org.apache.brooklyn.core.mgmt.osgi.OsgiStandaloneTest;
 import org.apache.brooklyn.entity.stock.BasicApplication;
@@ -219,6 +218,8 @@ public class ReferencedYamlTest extends AbstractYamlTest {
 
     @Test
     public void testCatalogReference() throws Exception {
+        TestResourceUnavailableException.throwIfResourceUnavailable(getClass(), OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_PATH);
+
         addCatalogItems(
             "brooklyn.catalog:",
             "  brooklyn.libraries:",
@@ -231,6 +232,8 @@ public class ReferencedYamlTest extends AbstractYamlTest {
 
     @Test
     public void testCatalogReferenceByExplicitUrl() throws Exception {
+        TestResourceUnavailableException.throwIfResourceUnavailable(getClass(), OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_PATH);
+
         addCatalogItems(
             "brooklyn.catalog:",
             "  brooklyn.libraries:",
@@ -243,6 +246,8 @@ public class ReferencedYamlTest extends AbstractYamlTest {
 
     @Test
     public void testCatalogReferenceByMultipleUrls() throws Exception {
+        TestResourceUnavailableException.throwIfResourceUnavailable(getClass(), OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_PATH);
+
         addCatalogItems(
             "brooklyn.catalog:",
             "  items:",
@@ -255,6 +260,8 @@ public class ReferencedYamlTest extends AbstractYamlTest {
 
     @Test
     public void testCatalogReferenceByMultipleUrlsSimplerSyntax() throws Exception {
+        TestResourceUnavailableException.throwIfResourceUnavailable(getClass(), OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_PATH);
+
         addCatalogItems(
             "brooklyn.catalog:",
             "  items:",
@@ -268,6 +275,8 @@ public class ReferencedYamlTest extends AbstractYamlTest {
 
     @Test
     public void testCatalogReferenceSeesPreviousItems() throws Exception {
+        TestResourceUnavailableException.throwIfResourceUnavailable(getClass(), OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_PATH);
+
         addCatalogItems(
             "brooklyn.catalog:",
             "  brooklyn.libraries:",
@@ -294,6 +303,8 @@ public class ReferencedYamlTest extends AbstractYamlTest {
 
     @Test
     public void testCatalogReferenceMixesMetaAndUrl() throws Exception {
+        TestResourceUnavailableException.throwIfResourceUnavailable(getClass(), OsgiStandaloneTest.BROOKLYN_TEST_OSGI_ENTITIES_PATH);
+
         addCatalogItems(
             "brooklyn.catalog:",
             "  brooklyn.libraries:",

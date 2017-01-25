@@ -137,7 +137,7 @@ public class RebindPolicyTest extends RebindTestFixtureWithApp {
 
         Entities.unmanage(entity);
         Locations.unmanage(loc);
-        RebindTestUtils.waitForPersisted(origApp);
+        RebindTestUtils.stopPersistence(origApp);
         
         BrooklynMementoManifest manifest = loadMementoManifest();
         assertFalse(manifest.getEntityIdToManifest().containsKey(entity.getId()));
@@ -156,7 +156,7 @@ public class RebindPolicyTest extends RebindTestFixtureWithApp {
 
         entity.policies().remove(policy);
         entity.enrichers().remove(enricher);
-        RebindTestUtils.waitForPersisted(origApp);
+        RebindTestUtils.stopPersistence(origApp);
         
         BrooklynMementoManifest manifest = loadMementoManifest();
         assertFalse(manifest.getPolicyIdToType().containsKey(policy.getId()));
@@ -229,7 +229,7 @@ public class RebindPolicyTest extends RebindTestFixtureWithApp {
         assertTrue(origEnricher.success);
         assertTrue(origPolicy.success);
         
-        newApp = (TestApplication) rebind();
+        newApp = rebind();
         EnricherChecksEntityHierarchy newEnricher = (EnricherChecksEntityHierarchy) Iterables.getOnlyElement(newApp.enrichers());
         PolicyChecksEntityHierarchy newPolicy = (PolicyChecksEntityHierarchy) Iterables.getOnlyElement(newApp.policies());
 

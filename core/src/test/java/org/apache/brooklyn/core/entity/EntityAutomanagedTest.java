@@ -20,6 +20,7 @@ package org.apache.brooklyn.core.entity;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -32,6 +33,7 @@ import org.apache.brooklyn.core.entity.EntityAutomanagedTest.RecordingCollection
 import org.apache.brooklyn.core.entity.EntityAutomanagedTest.RecordingCollectionChangeListener.ChangeType;
 import org.apache.brooklyn.core.test.BrooklynAppUnitTestSupport;
 import org.apache.brooklyn.core.test.entity.TestApplication;
+import org.apache.brooklyn.core.test.entity.TestApplicationImpl;
 import org.apache.brooklyn.core.test.entity.TestEntity;
 import org.apache.brooklyn.test.Asserts;
 import org.testng.annotations.BeforeMethod;
@@ -57,6 +59,7 @@ public class EntityAutomanagedTest extends BrooklynAppUnitTestSupport {
     
     protected RecordingCollectionChangeListener listener;
     
+    @Override
     @BeforeMethod(alwaysRun=true)
     public void setUp() throws Exception {
         super.setUp();
@@ -261,6 +264,11 @@ public class EntityAutomanagedTest extends BrooklynAppUnitTestSupport {
         app.addChild(e);
         assertTrue(Entities.isManaged(e));
         listener.assertEventsEqualsEventually(ImmutableList.of(new ChangeEvent(ChangeType.ADDED, e)));
+    }
+
+    @Test
+    public void testEntityNotEqualNull() {
+        assertNotEquals(new TestApplicationImpl(), null);
     }
 
     // TODO Compiler problems - see comment at top of class

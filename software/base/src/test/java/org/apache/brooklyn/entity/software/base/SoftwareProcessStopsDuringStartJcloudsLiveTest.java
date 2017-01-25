@@ -20,7 +20,6 @@ package org.apache.brooklyn.entity.software.base;
 
 import static org.apache.brooklyn.test.Asserts.assertEquals;
 import static org.apache.brooklyn.test.Asserts.assertNotNull;
-import static org.apache.brooklyn.test.Asserts.assertTrue;
 import static org.apache.brooklyn.test.Asserts.fail;
 
 import java.util.Map;
@@ -42,6 +41,7 @@ import org.apache.brooklyn.core.entity.Attributes;
 import org.apache.brooklyn.core.entity.BrooklynConfigKeys;
 import org.apache.brooklyn.core.entity.Entities;
 import org.apache.brooklyn.core.entity.EntityAsserts;
+import org.apache.brooklyn.core.entity.internal.AttributesInternal;
 import org.apache.brooklyn.core.entity.lifecycle.Lifecycle;
 import org.apache.brooklyn.core.entity.trait.Startable;
 import org.apache.brooklyn.core.internal.BrooklynProperties;
@@ -135,16 +135,18 @@ public class SoftwareProcessStopsDuringStartJcloudsLiveTest extends BrooklynAppL
                 .configure(BrooklynConfigKeys.SKIP_ON_BOX_BASE_DIR_RESOLUTION, true));
         
         executeInLimitedTime(new Callable<Void>() {
+            @Override
             public Void call() {
                 app.start(ImmutableList.of(loc));
                 return null;
             }
         }, Asserts.DEFAULT_LONG_TIMEOUT.toMilliseconds(), TimeUnit.MILLISECONDS);
         EntityAsserts.assertEntityHealthy(entity);
-        assertEquals(entity.getAttribute(MachineLifecycleEffectorTasks.INTERNAL_PROVISIONING_TASK_STATE), MachineLifecycleEffectorTasks.ProvisioningTaskState.DONE);
+        assertEquals(entity.getAttribute(AttributesInternal.INTERNAL_PROVISIONING_TASK_STATE), null);
         assertEquals(entity.getAttribute(MachineLifecycleEffectorTasks.INTERNAL_PROVISIONED_MACHINE), Machines.findUniqueMachineLocation(entity.getLocations(), SshMachineLocation.class).get());
 
         executeInLimitedTime(new Callable<Void>() {
+            @Override
             public Void call() {
                 Entities.destroy(app);
                 return null;
@@ -152,7 +154,7 @@ public class SoftwareProcessStopsDuringStartJcloudsLiveTest extends BrooklynAppL
         }, Asserts.DEFAULT_LONG_TIMEOUT.toMilliseconds(), TimeUnit.MILLISECONDS);
         assertEquals(app.getAttribute(Attributes.SERVICE_STATE_ACTUAL), Lifecycle.STOPPED);
         assertEquals(app.getAttribute(Attributes.SERVICE_STATE_EXPECTED).getState(), Lifecycle.STOPPED);
-        assertEquals(entity.getAttribute(MachineLifecycleEffectorTasks.INTERNAL_PROVISIONING_TASK_STATE), null);
+        assertEquals(entity.getAttribute(AttributesInternal.INTERNAL_PROVISIONING_TASK_STATE), null);
         assertEquals(entity.getAttribute(MachineLifecycleEffectorTasks.INTERNAL_PROVISIONED_MACHINE), null);
     }
 
@@ -188,7 +190,7 @@ public class SoftwareProcessStopsDuringStartJcloudsLiveTest extends BrooklynAppL
         // Invoke async
         @SuppressWarnings("unused")
         Task<Void> startTask = Entities.invokeEffector(app, app, Startable.START, ImmutableMap.of("locations", MutableList.of()));
-        EntityAsserts.assertAttributeEqualsEventually(entity, MachineLifecycleEffectorTasks.INTERNAL_PROVISIONING_TASK_STATE, MachineLifecycleEffectorTasks.ProvisioningTaskState.RUNNING);
+        EntityAsserts.assertAttributeEqualsEventually(entity, AttributesInternal.INTERNAL_PROVISIONING_TASK_STATE, AttributesInternal.ProvisioningTaskState.RUNNING);
 
         Stopwatch stopwatch = Stopwatch.createStarted();
         Entities.destroyCatching(app);

@@ -27,23 +27,20 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.annotation.Nullable;
 
-import org.apache.brooklyn.util.pool.BasicPool;
-import org.apache.brooklyn.util.pool.Lease;
-import org.apache.brooklyn.util.pool.Pool;
+import org.apache.brooklyn.util.guava.Suppliers;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
-import org.testng.internal.annotations.Sets;
 
 import com.google.common.base.Function;
 import com.google.common.base.Predicates;
 import com.google.common.base.Supplier;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningExecutorService;
@@ -58,18 +55,8 @@ public class BasicPoolTest {
     
     @BeforeMethod(alwaysRun=true)
     public void setUp() throws Exception {
-        // Note we use final theCounter variable, rather than just a field, to guarantee 
-        // that each sequential test run won't be accessing the same field value if a test
-        // doesn't tear down and keeps executing in another thread for some reason.
-        
-        final AtomicInteger theCounter = new AtomicInteger(0);
         closedVals = new CopyOnWriteArrayList<Integer>();
-        
-        supplier = new Supplier<Integer>() {
-            @Override public Integer get() {
-                return theCounter.getAndIncrement();
-            }
-        };
+        supplier = Suppliers.incrementing();
         closer = new Function<Integer,Void>() {
             @Override public Void apply(@Nullable Integer input) {
                 closedVals.add(input);
@@ -183,6 +170,7 @@ public class BasicPoolTest {
         
         for (int i = 0; i < 1000; i++) {
             futures.add(executor.submit(new Runnable() {
+                @Override
                 public void run() {
                     leases.add(pool.leaseObject());
                 }

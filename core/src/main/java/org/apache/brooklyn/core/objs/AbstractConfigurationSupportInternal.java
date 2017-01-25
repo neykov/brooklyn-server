@@ -96,6 +96,7 @@ public abstract class AbstractConfigurationSupportInternal implements BrooklynOb
         // ValueResolver.
         
         Callable<T> job = new Callable<T>() {
+            @Override
             public T call() {
                 try {
                     return get(key);
@@ -131,6 +132,9 @@ public abstract class AbstractConfigurationSupportInternal implements BrooklynOb
      * See {@link #getNonBlockingResolvingStructuredKey(ConfigKey)}.
      */
     protected <T> Maybe<T> getNonBlockingResolvingSimple(ConfigKey<T> key) {
+        // TODO See AbstractConfigMapImpl.getConfigImpl, for how it looks up the "container" of the
+        // key, so that it gets the right context entity etc.
+        
         // getRaw returns Maybe(val) if the key was explicitly set (where val can be null)
         // or Absent if the config key was unset.
         Object unresolved = getRaw(key).or(key.getDefaultValue());
@@ -139,7 +143,7 @@ public abstract class AbstractConfigurationSupportInternal implements BrooklynOb
         Object resolved = Tasks.resolving(unresolved)
                 .as(Object.class)
                 .defaultValue(marker)
-                .timeout(ValueResolver.REAL_REAL_QUICK_WAIT)
+                .immediately(true)
                 .context(getContext())
                 .swallowExceptions()
                 .get();
@@ -239,6 +243,7 @@ public abstract class AbstractConfigurationSupportInternal implements BrooklynOb
         return getConfigsInternal();
     }
 
+    @Override
     public Map<ConfigKey<?>,Object> getAllLocalRaw() {
         return getConfigsInternal().getAllConfigLocalRaw();
     }

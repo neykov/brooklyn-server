@@ -23,8 +23,6 @@ import java.util.Map;
 
 import javax.annotation.Nullable;
 
-import com.google.common.annotations.Beta;
-
 import org.apache.brooklyn.api.effector.Effector;
 import org.apache.brooklyn.api.entity.Entity;
 import org.apache.brooklyn.api.entity.EntityLocal;
@@ -38,11 +36,10 @@ import org.apache.brooklyn.api.mgmt.rebind.Rebindable;
 import org.apache.brooklyn.api.mgmt.rebind.mementos.EntityMemento;
 import org.apache.brooklyn.api.sensor.AttributeSensor;
 import org.apache.brooklyn.api.sensor.Feed;
-import org.apache.brooklyn.config.ConfigKey;
-import org.apache.brooklyn.core.entity.internal.EntityConfigMap;
 import org.apache.brooklyn.core.mgmt.internal.EntityManagementSupport;
 import org.apache.brooklyn.core.objs.BrooklynObjectInternal;
-import org.apache.brooklyn.util.core.config.ConfigBag;
+
+import com.google.common.annotations.Beta;
 
 /** 
  * Extended Entity interface with additional functionality that is purely-internal (i.e. intended 
@@ -55,22 +52,33 @@ public interface EntityInternal extends BrooklynObjectInternal, EntityLocal, Reb
 
     void removeLocations(Collection<? extends Location> locations);
 
+    /**
+     * Adds the given locations to this entity, but without emitting {@link AbstractEntity#LOCATION_ADDED} 
+     * events, and without auto-managing the locations. This is for internal purposes only; it is primarily 
+     * intended for use during rebind.
+     */
+    @Beta
+    void addLocationsWithoutPublishing(@Nullable Collection<? extends Location> locations);
+
     void clearLocations();
 
     /**
      * @deprecated since 0.8.0; use {@link SensorSupportInternal#setWithoutPublishing(AttributeSensor, Object)} via code like {@code sensors().setWithoutPublishing(attribute, val)}.
      */
+    @Deprecated
     <T> T setAttributeWithoutPublishing(AttributeSensor<T> sensor, T val);
 
     /**
      * @deprecated since 0.8.0; use {@link SensorSupportInternal#getAll()} via code like {@code sensors().getAll()}.
      */
+    @Deprecated
     @Beta
     Map<AttributeSensor, Object> getAllAttributes();
 
     /**
      * @deprecated since 0.8.0; use {@link SensorSupportInternal#remove(AttributeSensor)} via code like {@code sensors().remove(attribute)}.
      */
+    @Deprecated
     @Beta
     void removeAttribute(AttributeSensor<?> attribute);
 
@@ -157,6 +165,9 @@ public interface EntityInternal extends BrooklynObjectInternal, EntityLocal, Reb
 
     @Override
     EnricherSupportInternal enrichers();
+
+    @Override
+    GroupSupportInternal groups();
 
     @Beta
     public interface EntitySubscriptionSupportInternal extends BrooklynObjectInternal.SubscriptionSupportInternal {

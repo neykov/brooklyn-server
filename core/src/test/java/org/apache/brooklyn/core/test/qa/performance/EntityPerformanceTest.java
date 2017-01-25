@@ -41,6 +41,9 @@ import com.google.common.collect.Lists;
 
 public class EntityPerformanceTest extends AbstractPerformanceTest {
 
+    // TODO could have variant with a much larger numIterations, as a longevity test.
+    // e.g. will we eventually get OOME when storing all tasks relating to effector calls?
+
     private static final long TIMEOUT_MS = 10*1000;
     
     TestEntity entity;
@@ -75,6 +78,7 @@ public class EntityPerformanceTest extends AbstractPerformanceTest {
                 .iterations(numIterations)
                 .minAcceptablePerSecond(minRatePerSec)
                 .job(new Runnable() {
+                    @Override
                     public void run() {
                         entity.sensors().set(TestEntity.SEQUENCE, i.getAndIncrement());
                     }}));
@@ -97,11 +101,13 @@ public class EntityPerformanceTest extends AbstractPerformanceTest {
                 .iterations(numIterations)
                 .minAcceptablePerSecond(minRatePerSec)
                 .job(new Runnable() {
+                    @Override
                     public void run() {
                         entity.sensors().set(TestEntity.SEQUENCE, (i.getAndIncrement()));
                     }}));
         
         Asserts.succeedsEventually(MutableMap.of("timeout", TIMEOUT_MS), new Runnable() {
+            @Override
             public void run() {
                 assertTrue(lastVal.get() >= numIterations, "lastVal="+lastVal+"; numIterations="+numIterations);
             }});
@@ -117,6 +123,7 @@ public class EntityPerformanceTest extends AbstractPerformanceTest {
                 .iterations(numIterations)
                 .minAcceptablePerSecond(minRatePerSec)
                 .job(new Runnable() {
+                    @Override
                     public void run() {
                         entity.myEffector();
                     }}));
@@ -132,6 +139,7 @@ public class EntityPerformanceTest extends AbstractPerformanceTest {
                 .iterations(numIterations)
                 .minAcceptablePerSecond(minRatePerSec)
                 .job(new Runnable() {
+                    @Override
                     public void run() {
                         Task<?> task = entity.invoke(TestEntity.MY_EFFECTOR, MutableMap.<String,Object>of());
                         try {
@@ -152,6 +160,7 @@ public class EntityPerformanceTest extends AbstractPerformanceTest {
                 .iterations(numIterations)
                 .minAcceptablePerSecond(minRatePerSec)
                 .job(new Runnable() {
+                    @Override
                     public void run() {
                         Task<?> task = Entities.invokeEffector(app, entities, TestEntity.MY_EFFECTOR);
                         try {

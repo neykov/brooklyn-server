@@ -96,7 +96,6 @@ import org.apache.brooklyn.util.collections.MutableList;
 import org.apache.brooklyn.util.collections.MutableMap;
 import org.apache.brooklyn.util.collections.MutableSet;
 import org.apache.brooklyn.util.collections.SetFromLiveMap;
-import org.apache.brooklyn.util.core.config.ConfigBag;
 import org.apache.brooklyn.util.core.flags.FlagUtils;
 import org.apache.brooklyn.util.core.flags.TypeCoercions;
 import org.apache.brooklyn.util.guava.Maybe;
@@ -429,8 +428,9 @@ public abstract class AbstractEntity extends AbstractBrooklynObject implements E
     
     @Override
     public boolean equals(Object o) {
-        return (o == this || o == selfProxy) || 
-                (o instanceof Entity && Objects.equal(getId(), ((Entity)o).getId()));
+        return o != null &&
+                ((o == this || o == selfProxy) ||
+                (o instanceof Entity && Objects.equal(getId(), ((Entity)o).getId())));
     }
     
     /** internal use only */ @Beta
@@ -498,6 +498,7 @@ public abstract class AbstractEntity extends AbstractBrooklynObject implements E
         return this;
     }
 
+    @Override
     public void setManagementContext(ManagementContextInternal managementContext) {
         super.setManagementContext(managementContext);
         getManagementSupport().setManagementContext(managementContext);
@@ -843,6 +844,7 @@ public abstract class AbstractEntity extends AbstractBrooklynObject implements E
 
     // FIXME Can this really be deleted? Overridden by AbstractApplication; needs careful review
     /** @deprecated since 0.4.0 should not be needed / leaked outwith brooklyn internals / mgmt support? */
+    @Deprecated
     protected synchronized void setApplication(Application app) {
         if (application != null) {
             if (application.getId() != app.getId()) {
@@ -890,6 +892,17 @@ public abstract class AbstractEntity extends AbstractBrooklynObject implements E
 
     @Override
     public void addLocations(Collection<? extends Location> newLocations) {
+        addLocationsImpl(newLocations, true);
+    }
+
+    @Override
+    @Beta
+    public void addLocationsWithoutPublishing(Collection<? extends Location> newLocations) {
+        addLocationsImpl(newLocations, false);
+    }
+    
+    @Beta
+    protected void addLocationsImpl(Collection<? extends Location> newLocations, boolean publish) {
         if (newLocations==null || newLocations.isEmpty()) {
             return;
         }
@@ -917,18 +930,23 @@ public abstract class AbstractEntity extends AbstractBrooklynObject implements E
                 locations.set(ImmutableList.<Location>builder().addAll(oldLocations).addAll(trulyNewLocations).build());
             }
             
-            for (Location loc : trulyNewLocations) {
-                sensors().emit(AbstractEntity.LOCATION_ADDED, loc);
+            if (publish) {
+                for (Location loc : trulyNewLocations) {
+                    sensors().emit(AbstractEntity.LOCATION_ADDED, loc);
+                }
             }
         }
         
-        if (getManagementSupport().isDeployed()) {
-            for (Location newLocation : newLocations) {
-                // Location is now reachable, so manage it
-                // TODO will not be required in future releases when creating locations always goes through LocationManager.createLocation(LocationSpec).
-                Locations.manage(newLocation, getManagementContext());
+        if (publish) {
+            if (getManagementSupport().isDeployed()) {
+                for (Location newLocation : newLocations) {
+                    // Location is now reachable, so manage it
+                    // TODO will not be required in future releases when creating locations always goes through LocationManager.createLocation(LocationSpec).
+                    Locations.manage(newLocation, getManagementContext());
+                }
             }
         }
+        
         getManagementSupport().getEntityChangeListener().onLocationsChanged();
     }
 
@@ -1020,6 +1038,7 @@ public abstract class AbstractEntity extends AbstractBrooklynObject implements E
      * <p>
      * returns old value 
      * @deprecated on interface since 0.5.0; use {@link ConfigToAttributes#apply(EntityLocal, AttributeSensorAndConfigKey)} */
+    @Deprecated
     public <T> T setAttribute(AttributeSensorAndConfigKey<?,T> configuredSensor) {
         T v = getAttribute(configuredSensor);
         if (v!=null) return v;
@@ -1212,6 +1231,7 @@ public abstract class AbstractEntity extends AbstractBrooklynObject implements E
             ConfigConstraints.assertValid(AbstractEntity.this, key, val);
         }
         
+        @Override
         protected AbstractConfigMapImpl<?> getConfigsInternal() {
             return configsInternal;
         }
@@ -1242,6 +1262,7 @@ public abstract class AbstractEntity extends AbstractBrooklynObject implements E
             }
         }
         
+        @Override
         protected <T> void onConfigChanged(ConfigKey<T> key, Object val) {
             getManagementSupport().getEntityChangeListener().onConfigChanged(key);
         }
@@ -1295,7 +1316,7 @@ public abstract class AbstractEntity extends AbstractBrooklynObject implements E
     @Override
     @Deprecated
     public <T> T setConfig(HasConfigKey<T> key, Task<T> val) {
-        return (T) config().set(key, val);
+        return config().set(key, val);
     }
 
     @SuppressWarnings("unchecked")
@@ -1508,6 +1529,7 @@ public abstract class AbstractEntity extends AbstractBrooklynObject implements E
     /**
      * Default entity initialization sets ID sensors and calls {@link #initEnrichers()}.
      */
+    @Override
     public void init() {
         super.init();
         initEnrichers();
@@ -1977,6 +1999,7 @@ public abstract class AbstractEntity extends AbstractBrooklynObject implements E
     // -------- EFFECTORS --------------
 
     /** Convenience for finding named effector in {@link EntityType#getEffectors()} {@link Map}. */
+    @Override
     public Effector<?> getEffector(String effectorName) {
         return entityType.getEffector(effectorName);
     }
@@ -2022,6 +2045,7 @@ public abstract class AbstractEntity extends AbstractBrooklynObject implements E
      * including the initial management started and subsequent management node master-change for this entity.
      * @deprecated since 0.4.0 override EntityManagementSupport.onManagementStarted if customization needed
      */
+    @Deprecated
     public void onManagementBecomingMaster() {}
     
     /**
@@ -2029,6 +2053,7 @@ public abstract class AbstractEntity extends AbstractBrooklynObject implements E
      * including the final management end and subsequent management node master-change for this entity.
      * @deprecated since 0.4.0 override EntityManagementSupport.onManagementStopped if customization needed
      */
+    @Deprecated
     public void onManagementNoLongerMaster() {}
 
     /**

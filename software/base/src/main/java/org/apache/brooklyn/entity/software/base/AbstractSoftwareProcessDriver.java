@@ -38,14 +38,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 
+import org.apache.brooklyn.api.entity.Entity;
 import org.apache.brooklyn.api.entity.EntityLocal;
 import org.apache.brooklyn.api.location.Location;
 import org.apache.brooklyn.api.mgmt.Task;
 import org.apache.brooklyn.api.mgmt.TaskAdaptable;
 import org.apache.brooklyn.config.ConfigKey;
 import org.apache.brooklyn.core.entity.BrooklynConfigKeys;
+import org.apache.brooklyn.core.entity.EntityInternal;
 import org.apache.brooklyn.core.entity.lifecycle.Lifecycle;
 import org.apache.brooklyn.core.entity.lifecycle.ServiceStateLogic;
+import org.apache.brooklyn.core.sensor.ReleaseableLatch;
+import org.apache.brooklyn.entity.software.base.lifecycle.MachineLifecycleEffectorTasks;
 import org.apache.brooklyn.util.collections.MutableMap;
 import org.apache.brooklyn.util.core.ResourceUtils;
 import org.apache.brooklyn.util.core.task.DynamicTasks;
@@ -120,90 +124,119 @@ public abstract class AbstractSoftwareProcessDriver implements SoftwareProcessDr
             skipStart = entityStarted.or(false);
         }
 
-        DynamicTasks.queue("prepare", new Runnable() { public void run() {
+        DynamicTasks.queue("prepare", new Runnable() { @Override public void run() {
             prepare();
         }});
 
         if (!skipStart) {
-            DynamicTasks.queue("install", new Runnable() { public void run() {
+            DynamicTasks.queue("install", new Runnable() { @Override public void run() {
                 Optional<Boolean> locationInstalled = Optional.fromNullable(getLocation().getConfig(BrooklynConfigKeys.SKIP_ENTITY_INSTALLATION));
                 Optional<Boolean> entityInstalled = Optional.fromNullable(entity.getConfig(BrooklynConfigKeys.SKIP_ENTITY_INSTALLATION));
 
                 boolean skipInstall = locationInstalled.or(entityInstalled).or(false);
                 if (!skipInstall) {
-                    DynamicTasks.queue("copy-pre-install-resources", new Runnable() { public void run() {
-                        waitForConfigKey(BrooklynConfigKeys.PRE_INSTALL_RESOURCES_LATCH);
-                        copyPreInstallResources();
+                    DynamicTasks.queue("copy-pre-install-resources", new Runnable() { @Override public void run() {
+                        try (CloseableLatch value = waitForLatch(BrooklynConfigKeys.PRE_INSTALL_RESOURCES_LATCH)) {
+                            copyPreInstallResources();
+                        }
                     }});
 
-                    DynamicTasks.queue("pre-install", new Runnable() { public void run() {
+                    DynamicTasks.queue("pre-install", new Runnable() { @Override public void run() {
                         preInstall();
                     }});
 
-                    DynamicTasks.queue("pre-install-command", new Runnable() { public void run() {
+                    DynamicTasks.queue("pre-install-command", new Runnable() { @Override public void run() {
                         runPreInstallCommand();
                     }});
 
-                    DynamicTasks.queue("setup", new Runnable() { public void run() {
-                        waitForConfigKey(BrooklynConfigKeys.SETUP_LATCH);
-                        setup();
+                    DynamicTasks.queue("setup", new Runnable() { @Override public void run() {
+                        try (CloseableLatch value = waitForLatch(BrooklynConfigKeys.SETUP_LATCH)) {
+                            setup();
+                        }
                     }});
 
-                    DynamicTasks.queue("copy-install-resources", new Runnable() { public void run() {
-                        waitForConfigKey(BrooklynConfigKeys.INSTALL_RESOURCES_LATCH);
-                        copyInstallResources();
+                    DynamicTasks.queue("copy-install-resources", new Runnable() { @Override public void run() {
+                        try (CloseableLatch value = waitForLatch(BrooklynConfigKeys.INSTALL_RESOURCES_LATCH)) {
+                            copyInstallResources();
+                        }
                     }});
 
-                    DynamicTasks.queue("install (main)", new Runnable() { public void run() {
-                        waitForConfigKey(BrooklynConfigKeys.INSTALL_LATCH);
-                        install();
+                    DynamicTasks.queue("install (main)", new Runnable() { @Override public void run() {
+                        try (CloseableLatch value = waitForLatch(BrooklynConfigKeys.INSTALL_LATCH)) {
+                            install();
+                        }
                     }});
 
-                    DynamicTasks.queue("post-install-command", new Runnable() { public void run() {
+                    DynamicTasks.queue("post-install-command", new Runnable() { @Override public void run() {
                         runPostInstallCommand();
                     }});
                 }
             }});
 
-            DynamicTasks.queue("customize", new Runnable() { public void run() {
-                DynamicTasks.queue("pre-customize-command", new Runnable() { public void run() {
+            DynamicTasks.queue("customize", new Runnable() { @Override public void run() {
+                DynamicTasks.queue("pre-customize-command", new Runnable() { @Override public void run() {
                     runPreCustomizeCommand();
                 }});
 
-                DynamicTasks.queue("customize (main)", new Runnable() { public void run() {
-                    waitForConfigKey(BrooklynConfigKeys.CUSTOMIZE_LATCH);
-                    customize();
+                DynamicTasks.queue("customize (main)", new Runnable() { @Override public void run() {
+                    try (CloseableLatch value = waitForLatch(BrooklynConfigKeys.CUSTOMIZE_LATCH)) {
+                        customize();
+                    }
                 }});
 
-                DynamicTasks.queue("post-customize-command", new Runnable() { public void run() {
+                DynamicTasks.queue("post-customize-command", new Runnable() { @Override public void run() {
                     runPostCustomizeCommand();
                 }});
             }});
 
-            DynamicTasks.queue("launch", new Runnable() { public void run() {
+            DynamicTasks.queue("launch", new Runnable() { @Override public void run() {
                 DynamicTasks.queue("copy-runtime-resources", new Runnable() { public void run() {
-                    waitForConfigKey(BrooklynConfigKeys.RUNTIME_RESOURCES_LATCH);
-                    copyRuntimeResources();
+                    try (CloseableLatch value = waitForLatch(BrooklynConfigKeys.RUNTIME_RESOURCES_LATCH)) {
+                        copyRuntimeResources();
+                    }
                 }});
 
-                DynamicTasks.queue("pre-launch-command", new Runnable() { public void run() {
+                DynamicTasks.queue("pre-launch-command", new Runnable() { @Override public void run() {
                     runPreLaunchCommand();
                 }});
 
-                DynamicTasks.queue("launch (main)", new Runnable() { public void run() {
-                    waitForConfigKey(BrooklynConfigKeys.LAUNCH_LATCH);
-                    launch();
+                DynamicTasks.queue("launch (main)", new Runnable() { @Override public void run() {
+                    try (CloseableLatch value = waitForLatch(BrooklynConfigKeys.LAUNCH_LATCH)) {
+                        launch();
+                    }
                 }});
 
-                DynamicTasks.queue("post-launch-command", new Runnable() { public void run() {
+                DynamicTasks.queue("post-launch-command", new Runnable() { @Override public void run() {
                     runPostLaunchCommand();
                 }});
             }});
         }
 
-        DynamicTasks.queue("post-launch", new Runnable() { public void run() {
+        DynamicTasks.queue("post-launch", new Runnable() { @Override public void run() {
             postLaunch();
         }});
+    }
+
+    // Removes the checked Exception from the method signature
+    private static class CloseableLatch implements AutoCloseable {
+        private Entity caller;
+        private ReleaseableLatch releaseableLatch;
+
+        public CloseableLatch(Entity caller, ReleaseableLatch releaseableLatch) {
+            this.caller = caller;
+            this.releaseableLatch = releaseableLatch;
+        }
+
+        @Override
+        public void close() {
+            DynamicTasks.drain(null, false);
+            releaseableLatch.release(caller);
+        }
+    }
+
+    private CloseableLatch waitForLatch(ConfigKey<Boolean> configKey) {
+        ReleaseableLatch releaseableLatch = MachineLifecycleEffectorTasks.waitForLatch((EntityInternal)entity, configKey);
+        return new CloseableLatch(entity, releaseableLatch);
     }
 
     @Override
@@ -284,6 +317,7 @@ public abstract class AbstractSoftwareProcessDriver implements SoftwareProcessDr
     @Override
     public void restart() {
         DynamicTasks.queue("stop (best effort)", new Runnable() {
+            @Override
             public void run() {
                 DynamicTasks.markInessential();
                 boolean previouslyRunning = isRunning();
@@ -306,6 +340,7 @@ public abstract class AbstractSoftwareProcessDriver implements SoftwareProcessDr
         });
 
         DynamicTasks.queue("restart", new Runnable() {
+            @Override
             public void run() {
                 try {
                     if (doFullStartOnRestart()) {
@@ -313,17 +348,17 @@ public abstract class AbstractSoftwareProcessDriver implements SoftwareProcessDr
                         ServiceStateLogic.setExpectedState(getEntity(), Lifecycle.STARTING);
                         start();
                     } else {
-                        DynamicTasks.queue("pre-launch-command", new Runnable() { public void run() {
+                        DynamicTasks.queue("pre-launch-command", new Runnable() { @Override public void run() {
                             ServiceStateLogic.setExpectedState(getEntity(), Lifecycle.STARTING);
                             runPreLaunchCommand();
                         }});
-                        DynamicTasks.queue("launch (main)", new Runnable() { public void run() {
+                        DynamicTasks.queue("launch (main)", new Runnable() { @Override public void run() {
                             launch();
                         }});
-                        DynamicTasks.queue("post-launch-command", new Runnable() { public void run() {
+                        DynamicTasks.queue("post-launch-command", new Runnable() { @Override public void run() {
                             runPostLaunchCommand();
                         }});
-                        DynamicTasks.queue("post-launch", new Runnable() { public void run() {
+                        DynamicTasks.queue("post-launch", new Runnable() { @Override public void run() {
                             postLaunch();
                         }});
                     }
@@ -620,11 +655,6 @@ public abstract class AbstractSoftwareProcessDriver implements SoftwareProcessDr
 
     public String processTemplateContents(String templateContents, Map<String,? extends Object> extraSubstitutions) {
         return TemplateProcessor.processTemplateContents(templateContents, this, extraSubstitutions);
-    }
-
-    protected void waitForConfigKey(ConfigKey<?> configKey) {
-        Object val = entity.config().get(configKey);
-        if (val != null) log.debug("{} finished waiting for {} (value {}); continuing...", new Object[] {this, configKey, val});
     }
 
     public String getArchiveNameFormat() {

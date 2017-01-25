@@ -75,7 +75,9 @@
                 org.apache.brooklyn.rest.filter.NoCacheFilter,
                 org.apache.brooklyn.rest.filter.HaHotCheckResourceFilter,
                 org.apache.brooklyn.rest.filter.EntitlementContextFilter,
+                org.apache.brooklyn.rest.filter.CsrfTokenFilter,
                 org.apache.brooklyn.rest.util.ManagementContextProvider
+                <!-- org.apache.brooklyn.rest.filter.CorsImplSupplierFilter does not support ManagementContext injection in WEB_XML mode -->
                 <!-- org.apache.brooklyn.rest.util.ShutdownHandlerProvider -->
             </param-value>
         </init-param>

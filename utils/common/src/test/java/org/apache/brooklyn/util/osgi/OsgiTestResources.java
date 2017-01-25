@@ -40,13 +40,36 @@ public class OsgiTestResources {
      * brooklyn-test-osgi-entities (v 0.1.0) -
      * defines an entity and an application, to confirm it can be read and used by brooklyn
      */
+    public static final String BROOKLYN_TEST_OSGI_ENTITIES_SYMBOLIC_NAME_FINAL_PART = "brooklyn-test-osgi-entities";
+    public static final String BROOKLYN_TEST_OSGI_ENTITIES_SYMBOLIC_NAME_FULL =
+        "org.apache.brooklyn.test.resources.osgi."+BROOKLYN_TEST_OSGI_ENTITIES_SYMBOLIC_NAME_FINAL_PART;
     public static final String BROOKLYN_TEST_OSGI_ENTITIES_PATH = "/brooklyn/osgi/brooklyn-test-osgi-entities.jar";
     public static final String BROOKLYN_TEST_OSGI_ENTITIES_SIMPLE_APPLICATION = "org.apache.brooklyn.test.osgi.entities.SimpleApplication";
     public static final String BROOKLYN_TEST_OSGI_ENTITIES_SIMPLE_ENTITY = "org.apache.brooklyn.test.osgi.entities.SimpleEntity";
     public static final String BROOKLYN_TEST_OSGI_ENTITIES_SIMPLE_POLICY = "org.apache.brooklyn.test.osgi.entities.SimplePolicy";
+    public static final String BROOKLYN_TEST_OSGI_ENTITIES_SIMPLE_EFFECTOR = "org.apache.brooklyn.test.osgi.entities.SimpleEffectorInitializer";
     public static final String BROOKLYN_TEST_OSGI_ENTITIES_SIMPLE_OBJECT = "org.apache.brooklyn.test.osgi.entities.SimpleObject";
     public static final String BROOKLYN_TEST_OSGI_ENTITIES_SIMPLE_ENTITY_CONFIG_NAME = "simple.config";
     public static final String BROOKLYN_TEST_OSGI_ENTITIES_SIMPLE_ENTITY_SENSOR_NAME = "simple.sensor";
+
+    /**
+     * brooklyn-test-com-example-osgi-entities (v 0.1.0) -
+     * defines an entity and an application, to confirm it can be read and used by brooklyn.
+     * Uses a different symbolic name than the "org.apache.brooklyn" prefix, to test that it's
+     * not just "white-listing" of such bundles that allows tests to pass.
+     */
+    public static final String BROOKLYN_TEST_OSGI_ENTITIES_COM_EXAMPLE_SYMBOLIC_NAME_FINAL_PART = "brooklyn-test-osgi-com-example-entities";
+    public static final String BROOKLYN_TEST_OSGI_ENTITIES_COM_EXAMPLE_SYMBOLIC_NAME_FULL =
+        "com.example.brooklyn.test.resources.osgi."+BROOKLYN_TEST_OSGI_ENTITIES_COM_EXAMPLE_SYMBOLIC_NAME_FINAL_PART;
+    public static final String BROOKLYN_TEST_OSGI_ENTITIES_COM_EXAMPLE_PATH = "/brooklyn/osgi/brooklyn-test-osgi-com-example-entities.jar";
+    public static final String BROOKLYN_TEST_OSGI_ENTITIES_COM_EXAMPLE_APPLICATION = "com.example.brooklyn.test.osgi.entities.SimpleApplication";
+    public static final String BROOKLYN_TEST_OSGI_ENTITIES_COM_EXAMPLE_ENTITY = "com.example.brooklyn.test.osgi.entities.SimpleEntity";
+    public static final String BROOKLYN_TEST_OSGI_ENTITIES_COM_EXAMPLE_POLICY = "com.example.brooklyn.test.osgi.entities.SimplePolicy";
+    public static final String BROOKLYN_TEST_OSGI_ENTITIES_COM_EXAMPLE_LOCATION = "com.example.brooklyn.test.osgi.entities.SimpleLocation";
+    public static final String BROOKLYN_TEST_OSGI_ENTITIES_COM_EXAMPLE_EFFECTOR = "com.example.brooklyn.test.osgi.entities.SimpleEffectorInitializer";
+    public static final String BROOKLYN_TEST_OSGI_ENTITIES_COM_EXAMPLE_OBJECT = "com.example.brooklyn.test.osgi.entities.SimpleObject";
+    public static final String BROOKLYN_TEST_OSGI_ENTITIES_COM_EXAMPLE_ENTITY_CONFIG_NAME = "simple.config";
+    public static final String BROOKLYN_TEST_OSGI_ENTITIES_COM_EXAMPLE_ENTITY_SENSOR_NAME = "simple.sensor";
 
     /**
      * brooklyn-test-osgi-more-entities_0.1.0 -

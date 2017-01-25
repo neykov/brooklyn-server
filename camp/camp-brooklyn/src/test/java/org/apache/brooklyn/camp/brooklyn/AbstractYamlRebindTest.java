@@ -82,6 +82,7 @@ public class AbstractYamlRebindTest extends RebindTestFixture<StartableApplicati
         }
     }
 
+    @Override
     protected StartableApplication rebind(RebindOptions options) throws Exception {
         StartableApplication result = super.rebind(options);
         if (launcher != null) {
@@ -103,6 +104,7 @@ public class AbstractYamlRebindTest extends RebindTestFixture<StartableApplicati
         return null;
     }
 
+    @Override
     protected ManagementContext mgmt() {
         return (newManagementContext != null) ? newManagementContext : origManagementContext;
     }
@@ -158,6 +160,14 @@ public class AbstractYamlRebindTest extends RebindTestFixture<StartableApplicati
         return app;
     }
 
+    protected Entity createStartWaitAndLogApplication(String... input) throws Exception {
+        return createStartWaitAndLogApplication(joinLines(input));
+    }
+    
+    protected Entity createStartWaitAndLogApplication(String input) throws Exception {
+        return createStartWaitAndLogApplication(new StringReader(input));
+    }
+    
     protected Entity createStartWaitAndLogApplication(Reader input) throws Exception {
         Entity app = createAndStartApplication(input);
         waitForApplicationTasks(app);

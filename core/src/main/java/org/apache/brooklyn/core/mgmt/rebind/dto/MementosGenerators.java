@@ -56,6 +56,7 @@ import org.apache.brooklyn.core.entity.EntityInternal;
 import org.apache.brooklyn.core.feed.AbstractFeed;
 import org.apache.brooklyn.core.location.internal.LocationInternal;
 import org.apache.brooklyn.core.mgmt.persist.BrooklynPersistenceUtils;
+import org.apache.brooklyn.core.mgmt.persist.OsgiClassPrefixer;
 import org.apache.brooklyn.core.mgmt.rebind.AbstractBrooklynObjectRebindSupport;
 import org.apache.brooklyn.core.mgmt.rebind.TreeUtils;
 import org.apache.brooklyn.core.objs.BrooklynTypes;
@@ -70,6 +71,7 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.annotations.Beta;
 import com.google.common.base.Function;
+import com.google.common.base.Optional;
 import com.google.common.base.Predicates;
 import com.google.common.collect.Sets;
 
@@ -80,6 +82,7 @@ public class MementosGenerators {
     private static final Logger log = LoggerFactory.getLogger(MementosGenerators.class);
     
     /** @deprecated since 0.7.0 use {@link #newBasicMemento(BrooklynObject)} */
+    @Deprecated
     public static Memento newMemento(BrooklynObject instance) {
         return newBasicMemento(instance);
     }
@@ -178,6 +181,8 @@ public class MementosGenerators {
         
         builder.isTopLevelApp = (entity instanceof Application && entity.getParent() == null);
 
+        builder.configKeys.addAll(entity.getEntityType().getConfigKeys());
+        
         Map<ConfigKey<?>, ?> localConfig = entity.config().getAllLocalRaw();
         for (Map.Entry<ConfigKey<?>, ?> entry : localConfig.entrySet()) {
             ConfigKey<?> key = checkNotNull(entry.getKey(), localConfig);
@@ -202,7 +207,7 @@ public class MementosGenerators {
             AttributeSensor<?> key = checkNotNull(entry.getKey(), allAttributes);
             if (key.getPersistenceMode() != SensorPersistenceMode.NONE) {
                 Object value = entry.getValue();
-                builder.attributes.put((AttributeSensor<?>)key, value);
+                builder.attributes.put(key, value);
             }
         }
         
@@ -441,11 +446,13 @@ public class MementosGenerators {
         if (Proxy.isProxyClass(instance.getClass())) {
             throw new IllegalStateException("Attempt to create memento from proxy "+instance+" (would fail with wrong type)");
         }
+        OsgiClassPrefixer prefixer = new OsgiClassPrefixer();
+        Optional<String> typePrefix = prefixer.getPrefix(instance.getClass());
         
         builder.id = instance.getId();
         builder.displayName = instance.getDisplayName();
         builder.catalogItemId = instance.getCatalogItemId();
-        builder.type = instance.getClass().getName();
+        builder.type = (typePrefix.isPresent() ? typePrefix.get() : "") + instance.getClass().getName();
         builder.typeClass = instance.getClass();
         if (instance instanceof EntityAdjunct) {
             builder.uniqueTag = ((EntityAdjunct)instance).getUniqueTag();
