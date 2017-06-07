@@ -27,10 +27,12 @@ import org.apache.brooklyn.api.entity.Entity;
 import org.apache.brooklyn.api.entity.EntitySpec;
 import org.apache.brooklyn.api.location.Location;
 import org.apache.brooklyn.api.location.LocationSpec;
+import org.apache.brooklyn.api.mgmt.classloading.BrooklynClassLoadingContext;
 import org.apache.brooklyn.api.policy.Policy;
 import org.apache.brooklyn.api.typereg.ManagedBundle;
 import org.apache.brooklyn.api.typereg.RegisteredType;
 import org.apache.brooklyn.camp.brooklyn.AbstractYamlRebindTest;
+import org.apache.brooklyn.core.catalog.internal.CatalogUtils;
 import org.apache.brooklyn.core.effector.Effectors;
 import org.apache.brooklyn.core.catalog.internal.CatalogUtils;
 import org.apache.brooklyn.core.entity.EntityInternal;
@@ -339,6 +341,12 @@ public class CatalogOsgiVersionMoreEntityRebindTest extends AbstractYamlRebindTe
             "      type: " + BROOKLYN_TEST_MORE_ENTITIES_MORE_ENTITY);
         
         RegisteredType ci = Preconditions.checkNotNull( mgmt().getTypeRegistry().get("wrapped-more-entity") );
+        return ci;
+    }
+    
+    @Test
+    public void testRebindsClusterWithEntitySpecWrappingOsgi() throws Exception {
+        RegisteredType ci = installWrappedMoreEntity();
         EntitySpec<DynamicCluster> clusterSpec = EntitySpec.create(DynamicCluster.class)
             .configure(DynamicCluster.INITIAL_SIZE, 1)
             .configure(DynamicCluster.MEMBER_SPEC, origManagementContext.getTypeRegistry().createSpec(ci, null, EntitySpec.class));
